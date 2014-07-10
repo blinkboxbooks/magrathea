@@ -1,0 +1,45 @@
+{
+    "$schema": "book.schema.json",
+    "classification": [
+        {
+            "realm": "isbn",
+            "id": "9780111222333"
+        },
+        {
+            "realm": "publisher",
+            "id": "randomhouse_uk"
+        }
+    ],
+    "media": {
+        "epubs": [
+            {
+                "classification": [
+                    {
+                        "realm": "type",
+                        "id": "origin"
+                    }
+                ],
+                "uris": [
+                    {
+                        "type": "static",
+                        "uri": "http://container.azure.com/path/to/file.epub"
+                    }
+                ],
+                "wordcount": 37462,
+                "size": 25485
+            }
+        ]
+    },
+    "source": {
+        "$remaining": {
+            "deliveredAt": "2014-06-23T13:22:17.35Z",
+            "uri": "azure://path.to/a/folder/and/a/book.epub",
+            "role": "publisher_ftp",
+            "username": "randomhouse_uk",
+            "system": {
+                "name": "marvin/epub-verifier",
+                "version": "1.1.2"
+            }
+        }
+    }
+}

@@ -14,11 +14,19 @@ class WebService(config: AppConfig) extends HttpServiceActor {
   def receive = runRoute(route)
 }
 
+class EventListener(config: AppConfig) {
+  val eventSystem = ActorSystem("magrathea-event")
+  sys.addShutdownHook(eventSystem.shutdown())
+}
+
 object WebApp extends App with Configuration {
-  implicit val system = ActorSystem("akka-spray")
-  sys.addShutdownHook(system.shutdown())
   val appConfig = AppConfig(config)
-  val service = system.actorOf(Props(classOf[WebService], appConfig))
+
+  val apiSystem = ActorSystem("magrathea-api")
+  sys.addShutdownHook(apiSystem.shutdown())
+  val service = apiSystem.actorOf(Props(classOf[WebService], appConfig))
   val localUrl = appConfig.service.api.localUrl
-  IO(Http) ! Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort)
+  IO(Http)(apiSystem) ! Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort)
+
+  val eventListener = new EventListener(appConfig)
 }
