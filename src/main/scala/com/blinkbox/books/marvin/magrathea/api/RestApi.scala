@@ -1,13 +1,14 @@
-package com.blinkbox.books.marvin.magrathea
+package com.blinkbox.books.marvin.magrathea.api
 
 import akka.actor.ActorRefFactory
+import com.blinkbox.books.marvin.magrathea.ServiceConfig
 import com.blinkbox.books.spray.JsonFormats.ExplicitTypeHints
 import com.blinkbox.books.spray.v1.{ListPage, Version1JsonSupport}
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
 import shapeless.HNil
 import spray.http.HttpHeaders.RawHeader
 import spray.http.StatusCodes._
-import spray.routing.{ExceptionHandler, HttpService, PathMatcher, Route}
+import spray.routing._
 import spray.util.LoggingContext
 
 import scala.util.control.NonFatal
