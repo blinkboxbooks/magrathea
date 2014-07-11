@@ -7,9 +7,11 @@ import com.blinkbox.books.marvin.magrathea.Role.Role
 import com.blinkbox.books.marvin.magrathea.UriType.UriType
 import org.joda.time.DateTime
 
-case class ImageMedia(images: List[MediaItem], width: Int, height: Int)
+case class AuthorImage(classification: Classification, media: ImageMedia, source: Source)
+
+case class ImageMedia(images: List[MediaItem])
 case class MediaItem(classification: List[Classification], uris: List[UriItem], size: Int, source: Option[Source])
-case class UriItem(`type`: UriType, uri: URL, format: Option[String])
+case class UriItem(`type`: UriType, uri: URL, params: Option[String])
 
 case class Classification(realm: Realm, id: String)
 case class Source(`$remaining`: Remaining)
