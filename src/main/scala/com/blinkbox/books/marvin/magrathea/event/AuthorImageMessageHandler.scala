@@ -12,16 +12,19 @@ import org.joda.time.format.ISODateTimeFormat
 import org.json4s._
 import org.json4s.ext._
 import org.json4s.native.JsonMethods._
+import spray.client.pipelining._
+import spray.http._
+import spray.httpx.Json4sJacksonSupport
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 
 class AuthorImageMessageHandler(maestro: ActorRef, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  extends ReliableEventHandler(errorHandler, retryInterval) {
+  extends ReliableEventHandler(errorHandler, retryInterval) with Json4sJacksonSupport {
 
   implicit val timeout = Timeout(retryInterval)
-  implicit val formats = DefaultFormats + ISODateTimeSerializer + URLSerializer +
+  implicit val json4sJacksonFormats = DefaultFormats + ISODateTimeSerializer + URLSerializer +
     new EnumNameSerializer(Realm) + new EnumNameSerializer(Role) + new EnumNameSerializer(UriType)
 
   case object ISODateTimeSerializer extends CustomSerializer[DateTime](_ => ( {
@@ -39,10 +42,19 @@ class AuthorImageMessageHandler(maestro: ActorRef, errorHandler: ErrorHandler, r
   }))
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
-    log.info("received: " + event.body.asString())
+    log.info("Received: " + event.body.asString())
     val json = event.body.asString()
-    val verifier = parse(json).extract[AuthorImage]
-    log.info("Verified: " + verifier)
+    val authorImage = parse(json).extract[AuthorImage]
+    log.info("JSON verified successfully: " + authorImage)
+    log.info("Storing to CouchDB...")
+    storeToCouch(authorImage)
+  }
+
+  private def storeToCouch(authorImage: AuthorImage) {
+    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
+    pipeline(Post("http://localhost:5984/magrathea", authorImage)).map { r =>
+      log.info(s"Response code: ${r.status.intValue}")
+    }
   }
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
