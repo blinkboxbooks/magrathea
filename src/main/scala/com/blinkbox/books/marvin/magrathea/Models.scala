@@ -36,6 +36,6 @@ object Role extends Enumeration {
 
 object UriType extends Enumeration {
   type UriType = Value
-  val Static = Value("stgatic")
+  val Static = Value("static")
   val ResourceServer = Value("resource_server")
 }
