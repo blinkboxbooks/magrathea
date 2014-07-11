@@ -16,7 +16,7 @@ class ePubVerifierMessageHandler(maestro: ActorRef, errorHandler: ErrorHandler, 
   implicit val timeout = Timeout(retryInterval)
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
-    log.info("---- received: " + event.body.asString())
+    log.info("received: " + event.body.asString())
   }
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.

@@ -13,7 +13,8 @@ import scala.concurrent.duration._
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
 case class EventListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
-                               coverProcessor: ComponentConfig, ePubVerifier: ComponentConfig)
+                               coverProcessor: ComponentConfig, authorImage: ComponentConfig,
+                               ePubVerifier: ComponentConfig, ePubEncrypter: ComponentConfig)
 case class ComponentConfig(input: QueueConfiguration, error: PublisherConfiguration)
 
 object AppConfig {
@@ -38,7 +39,9 @@ object EventListenerConfig {
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
     ComponentConfig(config, s"$prefix.coverProcessor"),
-    ComponentConfig(config, s"$prefix.ePubVerifier")
+    ComponentConfig(config, s"$prefix.authorImage"),
+    ComponentConfig(config, s"$prefix.ePubVerifier"),
+    ComponentConfig(config, s"$prefix.ePubEncrypter")
   )
 }
 

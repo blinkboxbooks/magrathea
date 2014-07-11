@@ -25,15 +25,29 @@ class EventListener(config: EventListenerConfig) {
     maestro, coverProcessorErrorHandler, config.retryInterval)), name = "cover-processor-handler")
   val coverProcessorConsumer = consumer("cover-processor-consumer", config.coverProcessor.input, coverProcessorMsgHandler)
 
+  // author image
+  val authorImageErrorHandler = errorHandler("author-image-error", config.authorImage.error)
+  val authorImageMsgHandler = system.actorOf(Props(new AuthorImageMessageHandler(
+    maestro, authorImageErrorHandler, config.retryInterval)), name = "author-image-handler")
+  val authorImageConsumer = consumer("author-image-consumer", config.authorImage.input, authorImageMsgHandler)
+
   // epub verifier
   val ePubVerifierErrorHandler = errorHandler("epub-verifier-error", config.ePubVerifier.error)
   val ePubVerifierMsgHandler = system.actorOf(Props(new ePubVerifierMessageHandler(
     maestro, ePubVerifierErrorHandler, config.retryInterval)), name = "epub-verifier-handler")
   val ePubVerifierConsumer = consumer("epub-verifier-consumer", config.ePubVerifier.input, ePubVerifierMsgHandler)
 
+  // epub encrypter
+  val ePubEncrypterErrorHandler = errorHandler("epub-encrypter-error", config.ePubEncrypter.error)
+  val ePubEncrypterMsgHandler = system.actorOf(Props(new ePubEncrypterMessageHandler(
+    maestro, ePubEncrypterErrorHandler, config.retryInterval)), name = "epub-encrypter-handler")
+  val ePubEncrypterConsumer = consumer("epub-encrypter-consumer", config.ePubEncrypter.input, ePubEncrypterMsgHandler)
+
   def start() {
     coverProcessorConsumer ! RabbitMqConsumer.Init
+    authorImageConsumer ! RabbitMqConsumer.Init
     ePubVerifierConsumer ! RabbitMqConsumer.Init
+    ePubEncrypterConsumer ! RabbitMqConsumer.Init
   }
 
   private def newConnection() = RabbitMq.reliableConnection(config.rabbitMq)

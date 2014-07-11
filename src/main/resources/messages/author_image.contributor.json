@@ -1,13 +1,8 @@
 {
-    "$schema": "book.schema.json",
     "classification": [
         {
-            "realm": "isbn",
-            "id": "9780111222333"
-        },
-        {
-            "realm": "publisher",
-            "id": "randomhouse_uk"
+            "realm": "contributor_id",
+            "id": "17265885bf08fc5617c3d22951b4a36c8502f4c4"
         }
     ],
     "media": {
@@ -16,7 +11,7 @@
                 "classification": [
                     {
                         "realm": "type",
-                        "id": "front_cover"
+                        "id": "profile"
                     }
                 ],
                 "uris": [
@@ -43,9 +38,8 @@
     "source": {
         "$remaining": {
             "deliveredAt": "2014-06-23T13:22:17.35Z",
-            "uri": "azure://path.to/a/folder/and/a/book-cover.jpg",
-            "role": "publisher_ftp",
-            "username": "randomhouse_uk"
+            "role": "content_manager",
+            "username": "roberts@blinkbox.com"
         }
     }
 }
