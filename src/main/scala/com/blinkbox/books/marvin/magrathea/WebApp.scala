@@ -1,21 +1,24 @@
 package com.blinkbox.books.marvin.magrathea
 
 import akka.actor.{ActorSystem, Props}
-import akka.io.IO
+import akka.util.Timeout
 import com.blinkbox.books.config.Configuration
+import com.blinkbox.books.logging.{DiagnosticExecutionContext, Loggers}
 import com.blinkbox.books.marvin.magrathea.api.WebService
 import com.blinkbox.books.marvin.magrathea.event.EventListener
 import com.blinkbox.books.spray._
 import spray.can.Http
 
-object WebApp extends App with Configuration {
+object WebApp extends App with Configuration with Loggers {
   val appConfig = AppConfig(config)
 
-  val apiSystem = ActorSystem("magrathea-api")
-  sys.addShutdownHook(apiSystem.shutdown())
-  val service = apiSystem.actorOf(Props(classOf[WebService], appConfig))
+  implicit val system = ActorSystem("magrathea-api")
+  implicit val executionContext = DiagnosticExecutionContext(system.dispatcher)
+  implicit val timeout = Timeout(appConfig.service.api.timeout)
+  sys.addShutdownHook(system.shutdown())
+  val service = system.actorOf(Props(classOf[WebService], appConfig))
   val localUrl = appConfig.service.api.localUrl
-  IO(Http)(apiSystem) ! Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort)
+  HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))
 
   val eventListener = new EventListener(appConfig.eventListener)
   eventListener.start()

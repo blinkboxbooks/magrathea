@@ -13,38 +13,26 @@ scalacOptions := Seq("-unchecked", "-deprecation", "-feature", "-encoding", "utf
 javacOptions := Seq("-source", "1.7", "-target", "1.7", "-Xlint:unchecked")
 
 libraryDependencies ++= {
-  val akkaV = "2.3.3"
+  val akkaV = "2.3.4"
   val sprayV = "1.3.1"
   val json4sV = "3.2.10"
   Seq(
-    "io.spray"                  %  "spray-can"         % sprayV,
-    "io.spray"                  %  "spray-routing"     % sprayV,
-    "io.spray"                  %% "spray-json"        % "1.2.6",
-    "io.spray"                  %  "spray-client"      % sprayV,
-    "io.spray"                  %  "spray-testkit"     % sprayV    % "test",
-    "org.json4s"                %% "json4s-ext"        % json4sV,
-    "org.json4s"                %% "json4s-jackson"    % json4sV, // for swagger :-/
-    "com.typesafe.akka"         %% "akka-actor"        % akkaV,
+    "io.spray"                  %  "spray-testkit"     % sprayV    % Test,
+    "org.json4s"                %% "json4s-jackson"    % json4sV,  // for swagger :-/
     "com.typesafe.akka"         %% "akka-slf4j"        % akkaV,
-    "com.typesafe.akka"         %% "akka-testkit"      % akkaV     % "test",
-    "org.scalatest"             %% "scalatest"         % "2.2.0"   % "test",
-    "junit"                     %  "junit"             % "4.11"    % "test",
-    "com.novocode"              %  "junit-interface"   % "0.10"    % "test",
-    "org.mockito"               %  "mockito-all"       % "1.9.5"   % "test",
-    "com.gettyimages"           %% "spray-swagger"     % "0.4.3",
-    "com.blinkbox.books"        %% "common-spray"      % "0.12.0",
-    "com.blinkbox.books"        %% "common-spray-auth" % "0.3.4",
-    "com.blinkbox.books"        %% "common-config"     % "0.7.0",
-    "com.blinkbox.books"        %% "common-messaging"  % "0.2.1",
-    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "3.0.2"
+    "com.typesafe.akka"         %% "akka-testkit"      % akkaV     % Test,
+    "com.blinkbox.books"        %% "common-scala-test" % "0.2.1"   % Test,
+    "com.blinkbox.books"        %% "common-spray"      % "0.15.0",
+    "com.blinkbox.books"        %% "common-spray-auth" % "0.5.0",
+    "com.blinkbox.books"        %% "common-config"     % "1.0.1",
+    "com.blinkbox.books"        %% "common-messaging"  % "1.1.1",
+    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "6.0.0"
   )
 }
 
 Revolver.settings.settings
 
 assemblySettings
-
-packageOptions in (Compile, packageBin) += Package.ManifestAttributes(java.util.jar.Attributes.Name.CLASS_PATH -> ".")
 
 mergeStrategy in assembly <<= (mergeStrategy in assembly) { old =>
   {

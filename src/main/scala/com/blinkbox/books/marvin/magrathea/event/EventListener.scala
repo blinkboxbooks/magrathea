@@ -2,6 +2,7 @@ package com.blinkbox.books.marvin.magrathea.event
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
+import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.EventListenerConfig
 import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
@@ -10,7 +11,7 @@ import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, Rabbit
 
 class EventListener(config: EventListenerConfig) {
   implicit val system = ActorSystem("magrathea-event")
-  implicit val executionContext = system.dispatcher
+  implicit val executionContext = DiagnosticExecutionContext(system.dispatcher)
   implicit val timeout = Timeout(config.actorTimeout)
   sys.addShutdownHook(system.shutdown())
 
@@ -19,35 +20,19 @@ class EventListener(config: EventListenerConfig) {
 
   val maestro = system.actorOf(Props[Maestro], "maestro")
 
-  // cover processor
-  val coverProcessorErrorHandler = errorHandler("cover-processor-error", config.coverProcessor.error)
-  val coverProcessorMsgHandler = system.actorOf(Props(new CoverProcessorMessageHandler(
-    maestro, coverProcessorErrorHandler, config.retryInterval)), name = "cover-processor-handler")
-  val coverProcessorConsumer = consumer("cover-processor-consumer", config.coverProcessor.input, coverProcessorMsgHandler)
+  val bookErrorHandler = errorHandler("book-error", config.book.error)
+  val bookMsgHandler = system.actorOf(Props(new MessageHandler(
+    maestro, bookErrorHandler, config.retryInterval)), name = "book-handler")
+  val bookConsumer = consumer("book-consumer", config.book.input, bookMsgHandler)
 
-  // author image
-  val authorImageErrorHandler = errorHandler("author-image-error", config.authorImage.error)
-  val authorImageMsgHandler = system.actorOf(Props(new AuthorImageMessageHandler(
-    maestro, authorImageErrorHandler, config.retryInterval)), name = "author-image-handler")
-  val authorImageConsumer = consumer("author-image-consumer", config.authorImage.input, authorImageMsgHandler)
-
-  // epub verifier
-  val ePubVerifierErrorHandler = errorHandler("epub-verifier-error", config.ePubVerifier.error)
-  val ePubVerifierMsgHandler = system.actorOf(Props(new ePubVerifierMessageHandler(
-    maestro, ePubVerifierErrorHandler, config.retryInterval)), name = "epub-verifier-handler")
-  val ePubVerifierConsumer = consumer("epub-verifier-consumer", config.ePubVerifier.input, ePubVerifierMsgHandler)
-
-  // epub encrypter
-  val ePubEncrypterErrorHandler = errorHandler("epub-encrypter-error", config.ePubEncrypter.error)
-  val ePubEncrypterMsgHandler = system.actorOf(Props(new ePubEncrypterMessageHandler(
-    maestro, ePubEncrypterErrorHandler, config.retryInterval)), name = "epub-encrypter-handler")
-  val ePubEncrypterConsumer = consumer("epub-encrypter-consumer", config.ePubEncrypter.input, ePubEncrypterMsgHandler)
+  val contributorErrorHandler = errorHandler("contributor-error", config.contributor.error)
+  val contributorMsgHandler = system.actorOf(Props(new MessageHandler(
+    maestro, contributorErrorHandler, config.retryInterval)), name = "contributor-handler")
+  val contributorConsumer = consumer("contributor-consumer", config.contributor.input, contributorMsgHandler)
 
   def start() {
-    coverProcessorConsumer ! RabbitMqConsumer.Init
-    authorImageConsumer ! RabbitMqConsumer.Init
-    ePubVerifierConsumer ! RabbitMqConsumer.Init
-    ePubEncrypterConsumer ! RabbitMqConsumer.Init
+    bookConsumer ! RabbitMqConsumer.Init
+    contributorConsumer ! RabbitMqConsumer.Init
   }
 
   private def newConnection() = RabbitMq.reliableConnection(config.rabbitMq)
@@ -59,5 +44,5 @@ class EventListener(config: EventListenerConfig) {
     system.actorOf(Props(new RabbitMqConsumer(consumerConnection.createChannel, config, s"$actorName-msg", handler)), actorName)
 
   private def publisher(actorName: String, config: PublisherConfiguration) =
-    system.actorOf(Props(new RabbitMqConfirmedPublisher(publisherConnection.createChannel, config)), actorName)
+    system.actorOf(Props(new RabbitMqConfirmedPublisher(publisherConnection, config)), actorName)
 }
