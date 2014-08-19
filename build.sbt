@@ -30,18 +30,11 @@ libraryDependencies ++= {
   )
 }
 
-Revolver.settings.settings
-
-assemblySettings
+rpmPrepSettings
 
 mergeStrategy in assembly <<= (mergeStrategy in assembly) { old =>
   {
     case "asm-license.txt" | "overview.html" => MergeStrategy.discard
-    case "application.conf" => MergeStrategy.discard
     case x => old(x)
   }
 }
-
-artifact in (Compile, assembly) ~= { art => art.copy(`classifier` = Some("assembly")) }
-
-addArtifact(artifact in (Compile, assembly), assembly).settings
