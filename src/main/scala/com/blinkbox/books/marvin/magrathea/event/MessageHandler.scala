@@ -1,15 +1,12 @@
 package com.blinkbox.books.marvin.magrathea.event
 
 import java.io.IOException
-import java.net.URL
 
 import akka.actor.ActorRef
 import akka.util.Timeout
+import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.{AuthorImage, Realm, Role, UriType}
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
-import org.joda.time.DateTime
-import org.joda.time.format.ISODateTimeFormat
-import org.json4s._
 import org.json4s.ext._
 import org.json4s.native.JsonMethods._
 import spray.client.pipelining._
@@ -24,22 +21,8 @@ class MessageHandler(maestro: ActorRef, errorHandler: ErrorHandler, retryInterva
   extends ReliableEventHandler(errorHandler, retryInterval) with Json4sJacksonSupport {
 
   implicit val timeout = Timeout(retryInterval)
-  implicit val json4sJacksonFormats = DefaultFormats + ISODateTimeSerializer + URLSerializer +
+  implicit val json4sJacksonFormats = DefaultFormats +
     new EnumNameSerializer(Realm) + new EnumNameSerializer(Role) + new EnumNameSerializer(UriType)
-
-  case object ISODateTimeSerializer extends CustomSerializer[DateTime](_ => ( {
-    case JString(s) => ISODateTimeFormat.dateTime().parseDateTime(s)
-    case JNull => null
-  }, {
-    case d: DateTime => JString(ISODateTimeFormat.dateTime().print(d))
-  }))
-
-  case object URLSerializer extends CustomSerializer[URL](_ => ( {
-    case JString(s) => new URL(s)
-    case JNull => null
-  }, {
-    case u: URL => JString(u.toString)
-  }))
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
     log.info("Received: " + event.body.asString())
