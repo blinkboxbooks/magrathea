@@ -1,5 +1,6 @@
 package com.blinkbox.books.marvin.magrathea
 
+import java.net.URL
 import java.util.concurrent.TimeUnit
 
 import com.blinkbox.books.config._
@@ -12,7 +13,7 @@ import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class EventListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
+case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL ,retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
                                book: ComponentConfig, contributor: ComponentConfig)
 case class ComponentConfig(input: QueueConfiguration, error: PublisherConfiguration)
 
@@ -35,6 +36,7 @@ object ServiceConfig {
 object EventListenerConfig {
   def apply(config: Config, prefix: String) = new EventListenerConfig(
     RabbitMqConfig(config),
+    config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
     ComponentConfig(config, s"$prefix.book"),
