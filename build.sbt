@@ -26,7 +26,7 @@ libraryDependencies ++= {
     "com.blinkbox.books"        %% "common-spray-auth" % "0.5.0",
     "com.blinkbox.books"        %% "common-config"     % "1.0.1",
     "com.blinkbox.books"        %% "common-messaging"  % "1.1.1",
-    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "6.0.0"
+    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "6.0.2"
   )
 }
 
