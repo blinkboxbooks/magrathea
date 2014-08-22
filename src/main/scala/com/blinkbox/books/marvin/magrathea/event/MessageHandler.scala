@@ -7,10 +7,12 @@ import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
+import com.blinkbox.books.spray._
 import org.json4s.JsonAST._
 import org.json4s.native.JsonMethods._
 import spray.client.pipelining._
 import spray.http.StatusCodes._
+import spray.http.Uri.Path
 import spray.http._
 import spray.httpx.Json4sJacksonSupport
 
@@ -24,42 +26,40 @@ class MessageHandler(couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval:
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
 
+  private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
+  private val lookupUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/index/_view/replace_lookup"))
+  private val storeUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history"))
+
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
     val documentJson = parse(event.body.asString())
     val key = compact(render(extractDocumentKey(documentJson)))
 
     // check if the document key exists
-    val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
-    val lookupUri = Uri(s"$couchdbUrl/history/_design/index/_view/replace_lookup")
-    pipeline(Get(lookupUri.withQuery(("key", key)))).map { r =>
+    lookupDocument(key).map { r =>
       val respJson = parse(r.entity.asString)
       val foundDocs = respJson \ "rows"
-      if (foundDocs.children.size > 0) {
+      val finalJson = if (foundDocs.children.size > 0) {
         // TODO: delete if there are more documents
         println(s"there are ${foundDocs.children.size} documents with this id")
-        // replace it
+        // Merging the value of the first row with the rest of the document. This will result in a document with
+        // "_id" and "_rev" fields, which means replace the previous document with this new one.
         val idRev = (respJson \ "rows")(0) \ "value"
-        val finalJson = idRev merge documentJson
-        pipeline(Post(s"$couchdbUrl/history", finalJson)).map { r =>
-          val status = r.status
-          if (status == Created) {
-            println("Document replaced!")
-          } else {
-            println("An error occurred while replacing: " + status)
-          }
-        }
+        idRev merge documentJson
       } else {
-        // store it
-        pipeline(Post(s"$couchdbUrl/history", documentJson)).map { r =>
-          val status = r.status
-          if (status == Created) {
-            println("Document stored!")
-          } else {
-            println("An error occurred while storing: " + status)
-          }
+        documentJson
+      }
+      // store it
+      storeDocument(finalJson).map { r =>
+        val status = r.status
+        if (status == Created) {
+          println("Document stored!")
+        } else {
+          println("An error occurred while storing: " + status)
         }
       }
     }
+
+    // TODO: Merge documents in history to current
   }
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
@@ -73,5 +73,13 @@ class MessageHandler(couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval:
       .removeField(_._1 == "processedAt").removeField(_._1 == "system")
     val classification = json \ "classification"
     JArray(List(schema, remaining, classification))
+  }
+
+  private def lookupDocument(key: String): Future[HttpResponse] = {
+    pipeline(Get(lookupUri.withQuery(("key", key))))
+  }
+
+  private def storeDocument(document: JValue): Future[HttpResponse] = {
+    pipeline(Post(storeUri, document))
   }
 }
