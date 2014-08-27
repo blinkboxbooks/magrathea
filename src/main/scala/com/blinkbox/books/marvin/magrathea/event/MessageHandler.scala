@@ -6,9 +6,12 @@ import java.net.URL
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.marvin.magrathea.event.MergeMaster.DocumentKey
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.blinkbox.books.spray._
+import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._
+import org.json4s.JsonDSL._
 import org.json4s.native.JsonMethods._
 import spray.client.pipelining._
 import spray.http.StatusCodes._
@@ -20,8 +23,8 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 
-class MessageHandler(couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  extends ReliableEventHandler(errorHandler, retryInterval) with Json4sJacksonSupport {
+class MessageHandler(mergeMaster: ActorRef, couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+  extends ReliableEventHandler(errorHandler, retryInterval) with Json4sJacksonSupport with StrictLogging {
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
@@ -32,34 +35,42 @@ class MessageHandler(couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval:
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
     val documentJson = parse(event.body.asString())
-    val key = compact(render(extractDocumentKey(documentJson)))
+    val key = extractLookupKey(documentJson)
 
-    // check if the document key exists
+    logger.debug("Extracted lookup-key: {}", key)
+
+    // check if the lookup-key exists
     lookupDocument(key).map { r =>
       val respJson = parse(r.entity.asString)
       val foundDocs = respJson \ "rows"
+      // If there is at least on document with that key, delete all these documents except the first and
+      // replace it with the received document's details. Otherwise, just store the received document.
       val finalJson = if (foundDocs.children.size > 0) {
-        // TODO: delete if there are more documents
         println(s"there are ${foundDocs.children.size} documents with this id")
+        // TODO: delete if there are more documents
+        //
         // Merging the value of the first row with the rest of the document. This will result in a document with
         // "_id" and "_rev" fields, which means replace the previous document with this new one.
-        val idRev = (respJson \ "rows")(0) \ "value"
+        val idRev = ("_id" -> (respJson \ "rows")(0) \ "value" \ "_id") ~
+                    ("_rev" -> (respJson \ "rows")(0) \ "value" \ "_rev")
         idRev merge documentJson
       } else {
         documentJson
       }
-      // store it
+      // store the final document
       storeDocument(finalJson).map { r =>
         val status = r.status
+        val resp = parse(r.entity.asString)
+        val id = (resp \ "id").extract[String]
+        val rev = (resp \ "rev").extract[String]
         if (status == Created) {
-          println("Document stored!")
+          logger.debug("Document stored with id: \"{}\", rev: \"{}\"", id, rev)
+          mergeMaster ! extractDocumentKey(finalJson)
         } else {
-          println("An error occurred while storing: " + status)
+          logger.error("An error occurred while storing document with id: \"{}\", rev: \"{}\"", id, rev)
         }
       }
     }
-
-    // TODO: Merge documents in history to current
   }
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
@@ -67,12 +78,18 @@ class MessageHandler(couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval:
   final override protected def isTemporaryFailure(e: Throwable) = e.isInstanceOf[IOException] ||
     e.isInstanceOf[TimeoutException] || Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
-  private def extractDocumentKey(json: JValue): JArray = {
+  private def extractLookupKey(json: JValue): String = {
     val schema = json \ "$schema"
     val remaining = (json \ "source" \ "$remaining")
       .removeField(_._1 == "processedAt").removeField(_._1 == "system")
     val classification = json \ "classification"
-    JArray(List(schema, remaining, classification))
+    compact(render(JArray(List(schema, remaining, classification))))
+  }
+
+  private def extractDocumentKey(json: JValue): DocumentKey = {
+    val key = compact(render(json \ "classification"))
+    val msgType = (json \ "$schema").extract[String]
+    DocumentKey(key, msgType)
   }
 
   private def lookupDocument(key: String): Future[HttpResponse] = {
