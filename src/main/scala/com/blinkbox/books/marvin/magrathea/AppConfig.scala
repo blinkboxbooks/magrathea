@@ -13,9 +13,9 @@ import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL ,retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
-                               book: ComponentConfig, contributor: ComponentConfig)
-case class ComponentConfig(input: QueueConfiguration, error: PublisherConfiguration)
+case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL, retryInterval: FiniteDuration,
+                               actorTimeout: FiniteDuration, docsPerPage: Int, book: ComponentConfig, contributor: ComponentConfig)
+case class ComponentConfig(schema: String, input: QueueConfiguration, error: PublisherConfiguration)
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -39,6 +39,7 @@ object EventListenerConfig {
     config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
+    config.getInt(s"$prefix.docsPerPage"),
     ComponentConfig(config, s"$prefix.book"),
     ComponentConfig(config, s"$prefix.contributor")
   )
@@ -46,6 +47,7 @@ object EventListenerConfig {
 
 object ComponentConfig {
   def apply(config: Config, prefix: String) = new ComponentConfig(
+    config.getString(s"$prefix.schema"),
     QueueConfiguration(config.getConfig(s"$prefix.input")),
     PublisherConfiguration(config.getConfig(s"$prefix.error"))
   )

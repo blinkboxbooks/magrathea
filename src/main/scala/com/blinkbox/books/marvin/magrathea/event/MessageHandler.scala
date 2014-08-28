@@ -6,13 +6,13 @@ import java.net.URL
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.event.MergeMaster.DocumentKey
+import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.DocumentKey
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
-import org.json4s.native.JsonMethods._
+import org.json4s.jackson.JsonMethods
 import spray.client.pipelining._
 import spray.http.StatusCodes._
 import spray.http.Uri.Path
@@ -23,8 +23,9 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 
-class MessageHandler(mergeMaster: ActorRef, couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  extends ReliableEventHandler(errorHandler, retryInterval) with Json4sJacksonSupport with StrictLogging {
+class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+  extends ReliableEventHandler(errorHandler, retryInterval)
+  with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
@@ -65,7 +66,7 @@ class MessageHandler(mergeMaster: ActorRef, couchdbUrl: URL, errorHandler: Error
         val rev = (resp \ "rev").extract[String]
         if (status == Created) {
           logger.debug("Document stored with id: \"{}\", rev: \"{}\"", id, rev)
-          mergeMaster ! extractDocumentKey(finalJson)
+          documentMerger ! extractDocumentKey(finalJson)
         } else {
           logger.error("An error occurred while storing document with id: \"{}\", rev: \"{}\"", id, rev)
         }
@@ -88,8 +89,8 @@ class MessageHandler(mergeMaster: ActorRef, couchdbUrl: URL, errorHandler: Error
 
   private def extractDocumentKey(json: JValue): DocumentKey = {
     val key = compact(render(json \ "classification"))
-    val msgType = (json \ "$schema").extract[String]
-    DocumentKey(key, msgType)
+    val schema = (json \ "$schema").extract[String]
+    DocumentKey(key, schema)
   }
 
   private def lookupDocument(key: String): Future[HttpResponse] = {
