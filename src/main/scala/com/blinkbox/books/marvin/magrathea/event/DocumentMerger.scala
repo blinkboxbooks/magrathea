@@ -1,85 +1,67 @@
 package com.blinkbox.books.marvin.magrathea.event
 
-import akka.actor.{Props, Actor, ActorPath, ActorRef}
-import akka.pattern.PipeToSupport
+import akka.actor.{Props, Actor, ActorRef}
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.EventListenerConfig
-import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.{DocumentKey, MergeDocuments}
-import com.blinkbox.books.spray._
+import com.blinkbox.books.marvin.magrathea.event.DocumentMerger._
+import com.blinkbox.books.marvin.magrathea.event.MergeWorker._
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.JValue
 import org.json4s.jackson.JsonMethods
-import spray.client.pipelining._
-import spray.http.Uri.Path
-import spray.http.{HttpRequest, HttpResponse, Uri}
 import spray.httpx.Json4sJacksonSupport
 
-import scala.concurrent.Future
+import scala.collection.mutable
 
 object DocumentMerger {
-  case class DocumentKey(key: String, schema: String)
-  case class MergeDocuments(a: JValue, b: JValue)
+  case class MergeDocuments(docs: List[JValue])
 }
 
-class DocumentMerger(config: EventListenerConfig)
-  extends Actor with Json4sJacksonSupport with JsonMethods with StrictLogging {
+class DocumentMerger extends Actor with StrictLogging with Json4sJacksonSupport with JsonMethods {
+  implicit val ec = context.dispatcher
+  implicit val json4sJacksonFormats = DefaultFormats
+  private val docsQ = mutable.Queue.empty[(JValue, Any)]
+  private val maxJobs = 5
+
+  override def receive: Receive = {
+    case MergeDocuments(docs) =>
+      createWorker ! MergeRequest(docs)
+    case MergeResult(doc) => println(compact(render(doc)))
+    case _ =>
+  }
+
+  private def createWorker = context.actorOf(Props(new MergeWorker(self, maxJobs)))
+}
+
+object MergeWorker {
+  case class MergeRequest(docs: List[JValue])
+  case class MergeResult(doc: JValue)
+}
+
+class MergeWorker(parent: ActorRef, maxJobs: Int) extends Actor
+  with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val ec = context.dispatcher
   implicit val json4sJacksonFormats = DefaultFormats
 
-  private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
-  private val bookUri = config.couchdbUrl.withPath(config.couchdbUrl.path ++ Path("/history/_design/history/_view/book"))
-  private val contributorUri = config.couchdbUrl.withPath(config.couchdbUrl.path ++ Path("/history/_design/history/_view/contributor"))
-
-  override def receive: Receive = {
-    case k @ DocumentKey(_, _) =>
-      pipeline(Get(getCouchQuery(k))).map { r =>
-        val respJson = parse(r.entity.asString)
-        val docsCount = (respJson \ "rows").children.size
-        // create master
-        val m = context.actorOf(Props[Master], "master")
-        // create workers
-        createWorker("master")
-        createWorker("master")
-        createWorker("master")
-        createWorker("master")
-        // send some work to the master
-//        var docs = (respJson \ "rows").children
-//        while (docs.size) {
-//
-//        }
-//        docs.take(2).foldLeft()
-//        for (x <- (respJson \ "rows").children) {
-//          x \ "value"
-//        }
+  override def receive = {
+    case MergeRequest(docs) =>
+      if (docs.size <= maxJobs) {
+        // do the merge
+        val merged = docs.reduceLeft { (prev, curr) =>
+          prev ++ curr
+        }
+        parent ! MergeResult(merged)
+      } else {
+        // divide the merge and spawn other workers
+        var jobs = mutable.ListBuffer(docs: _*)
+        val jobsPerWorker = Math.ceil(docs.size.toDouble / maxJobs).toInt
+        for (i <- 1 to maxJobs) {
+          val w = createWorker
+          jobs.take(jobsPerWorker)
+        }
       }
-    case x => logger.error("Received unknown message: {}", x.toString)
+    case res: MergeResult => parent ! res
+    case _ =>
   }
 
-  private def getCouchQuery(docKey: DocumentKey): Uri = {
-    if (docKey.schema == config.book.schema) {
-      bookUri.withQuery(("key", docKey.key))
-    } else if (docKey.schema == config.contributor.schema) {
-      contributorUri.withQuery(("key", docKey.key))
-    } else {
-      throw new IllegalArgumentException(s"Unsupported schema: ${docKey.schema}")
-    }
-  }
-
-  private def createWorker(name: String) = context.actorOf(Props(
-    new MergeWorker(ActorPath.fromString(
-      "akka://%s/user/%s".format(context.system.name, name)))))
-}
-
-class MergeWorker(masterLocation: ActorPath) extends Worker(masterLocation) with PipeToSupport {
-  implicit val ec = context.dispatcher
-
-  override def doWork(workSender: ActorRef, msg: Any): Unit = {
-    Future {
-      msg match {
-        case MergeDocuments(a, b) => WorkComplete(a merge b)
-        case _ =>
-      }
-    } pipeTo self
-  }
+  private def createWorker = context.actorOf(Props(new MergeWorker(self, maxJobs)))
 }

@@ -6,7 +6,7 @@ import java.net.URL
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.DocumentKey
+import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.MergeDocuments
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -23,9 +23,10 @@ import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 
-class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: String, contributorSchema: String,
+                     errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval)
-  with Json4sJacksonSupport with JsonMethods with StrictLogging {
+  with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
@@ -33,6 +34,8 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, errorHandler: Er
   private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
   private val lookupUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/index/_view/replace_lookup"))
   private val storeUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history"))
+  private val bookUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/history/_view/book"))
+  private val contributorUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/history/_view/contributor"))
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
     val documentJson = parse(event.body.asString())
@@ -66,7 +69,13 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, errorHandler: Er
         val rev = (resp \ "rev").extract[String]
         if (status == Created) {
           logger.debug("Document stored with id: \"{}\", rev: \"{}\"", id, rev)
-          documentMerger ! extractDocumentKey(finalJson)
+          val docSchema = (finalJson \ "$schema").extract[String]
+          val docKey = compact(render(finalJson \ "classification"))
+          fetchDocuments(docSchema, docKey).map { r =>
+            val respJson = parse(r.entity.asString)
+            val docs = (respJson \ "rows").children
+            documentMerger ! MergeDocuments(docs)
+          }
         } else {
           logger.error("An error occurred while storing document with id: \"{}\", rev: \"{}\"", id, rev)
         }
@@ -87,17 +96,23 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, errorHandler: Er
     compact(render(JArray(List(schema, remaining, classification))))
   }
 
-  private def extractDocumentKey(json: JValue): DocumentKey = {
-    val key = compact(render(json \ "classification"))
-    val schema = (json \ "$schema").extract[String]
-    DocumentKey(key, schema)
-  }
-
   private def lookupDocument(key: String): Future[HttpResponse] = {
     pipeline(Get(lookupUri.withQuery(("key", key))))
   }
 
   private def storeDocument(document: JValue): Future[HttpResponse] = {
     pipeline(Post(storeUri, document))
+  }
+
+  private def fetchDocuments(schema: String, key: String): Future[HttpResponse] = {
+    Future {
+      if (schema == bookSchema) {
+        bookUri.withQuery(("key", key))
+      } else if (schema == contributorSchema) {
+        contributorUri.withQuery(("key", key))
+      } else {
+        throw new IllegalArgumentException(s"Unsupported schema: $schema")
+      }
+    } flatMap { fetchUri => pipeline(Get(fetchUri)) }
   }
 }

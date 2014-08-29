@@ -108,8 +108,7 @@ abstract class Worker(masterLocation: ActorPath) extends Actor with StrictLoggin
   override def preStart() = master ! WorkerCreated(self)
 
   // This is the state we're in when we're working on something.
-  // In this state we can deal with messages in a much more
-  // reasonable manner
+  // In this state we can deal with messages in a much more reasonable manner
   def working(work: Any): Receive = {
     // Pass... we're already working
     case WorkIsReady =>
@@ -127,9 +126,8 @@ abstract class Worker(masterLocation: ActorPath) extends Actor with StrictLoggin
       context.become(idle)
   }
 
-  // In this state we have no work to do. There really are only
-  // two messages that make sense while we're in this state, and
-  // we deal with them specially here
+  // In this state we have no work to do. There really are only two messages that
+  // make sense while we're in this state, and we deal with them specially here
   def idle: Receive = {
     // Master says there's work to be done, let's ask for it
     case WorkIsReady =>
