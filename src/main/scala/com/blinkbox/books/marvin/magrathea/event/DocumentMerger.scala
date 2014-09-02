@@ -57,7 +57,7 @@ class DocumentMerger extends Actor with StrictLogging with Json4sJacksonSupport 
         // cleanup
         jobs = Map.empty
         merged = List.empty
-      } else if (finishedJobs >= maxJobsPerWorker || unfinishedJobs > 1) {
+      } else if (finishedJobs >= maxJobsPerWorker || unfinishedJobs == 0) {
         // we still have work to do...
         val (docs, newMerged) = merged.splitAt(maxJobsPerWorker)
         merged = newMerged
@@ -72,8 +72,8 @@ class DocumentMerger extends Actor with StrictLogging with Json4sJacksonSupport 
     case _ =>
   }
 
-  private def createWorker(master: String): ActorRef = context.actorOf(Props(
-    new MergeWorker(ActorPath.fromString("akka://%s/user/document-merger/%s".format(context.system.name, master)))))
+  private def createWorker(master: String): ActorRef = context.actorOf(Props(new MergeWorker(
+    ActorPath.fromString("akka://%s/user/document-merger/%s".format(context.system.name, master)))))
 
   class MergeWorker(masterLocation: ActorPath) extends Worker(masterLocation) with PipeToSupport {
     implicit val ec = context.dispatcher
