@@ -18,7 +18,7 @@ class EventListener(config: EventListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
-  val documentMerger = system.actorOf(Props(new DocumentMerger))
+  val documentMerger = system.actorOf(Props(new DocumentMerger), "document-merger")
 
   val bookErrorHandler = errorHandler("book-error", config.book.error)
   val bookMsgHandler = system.actorOf(Props(new MessageHandler(documentMerger,
