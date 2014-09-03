@@ -7,12 +7,12 @@ package com.blinkbox.books.marvin.magrathea.event
 import akka.actor.{ActorPath, ActorRef, ActorSystem, Props}
 import akka.pattern.PipeToSupport
 import akka.testkit.{ImplicitSender, TestKit}
-import org.scalatest._
+import org.scalatest.{BeforeAndAfterAll, FunSuiteLike}
 
 import scala.concurrent.Future
 
-class DistributedWorkersSpec extends TestKit(ActorSystem("WorkerSpec"))
-  with Matchers with WordSpecLike with BeforeAndAfterAll with ImplicitSender {
+class DistributedWorkersSpec extends TestKit(ActorSystem("DistributedWorkersSpec"))
+  with FunSuiteLike with BeforeAndAfterAll with ImplicitSender {
 
   class TestWorker(masterLocation: ActorPath) extends Worker(masterLocation) with PipeToSupport {
     // We'll use the current dispatcher for the execution context.
@@ -35,22 +35,20 @@ class DistributedWorkersSpec extends TestKit(ActorSystem("WorkerSpec"))
     new TestWorker(ActorPath.fromString(
       "akka://%s/user/%s".format(system.name, name)))))
 
-  "Worker" should {
-    "work" in {
-      // Spin up the master
-      val m = system.actorOf(Props[Master], "master")
-      // Create three workers
-      val w1 = worker("master")
-      val w2 = worker("master")
-      val w3 = worker("master")
-      // Send some work to the master
-      m ! "Hithere"
-      m ! "Guys"
-      m ! "So"
-      m ! "What's"
-      m ! "Up?"
-      // We should get it all back
-      expectMsgAllOf("Hithere", "Guys", "So", "What's", "Up?")
-    }
+  test("Worker should work") {
+    // Spin up the master
+    val m = system.actorOf(Props[Master], "master")
+    // Create three workers
+    val w1 = worker("master")
+    val w2 = worker("master")
+    val w3 = worker("master")
+    // Send some work to the master
+    m ! "Hithere"
+    m ! "Guys"
+    m ! "So"
+    m ! "What's"
+    m ! "Up?"
+    // We should get it all back
+    expectMsgAllOf("Hithere", "Guys", "So", "What's", "Up?")
   }
 }

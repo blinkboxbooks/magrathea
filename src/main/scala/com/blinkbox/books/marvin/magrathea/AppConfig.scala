@@ -14,8 +14,9 @@ import scala.concurrent.duration._
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
 case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL, retryInterval: FiniteDuration,
-                               actorTimeout: FiniteDuration, docsPerPage: Int, book: ComponentConfig, contributor: ComponentConfig)
+  actorTimeout: FiniteDuration, merger: MergerConfig, book: ComponentConfig, contributor: ComponentConfig)
 case class ComponentConfig(schema: String, input: QueueConfiguration, error: PublisherConfiguration)
+case class MergerConfig(maxDocsPerJob: Int, numOfWorkers: Int)
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -39,7 +40,7 @@ object EventListenerConfig {
     config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
-    config.getInt(s"$prefix.docsPerPage"),
+    MergerConfig(config, s"$prefix.merger"),
     ComponentConfig(config, s"$prefix.book"),
     ComponentConfig(config, s"$prefix.contributor")
   )
@@ -50,5 +51,12 @@ object ComponentConfig {
     config.getString(s"$prefix.schema"),
     QueueConfiguration(config.getConfig(s"$prefix.input")),
     PublisherConfiguration(config.getConfig(s"$prefix.error"))
+  )
+}
+
+object MergerConfig {
+  def apply(config: Config, prefix: String) = new MergerConfig(
+    config.getInt(s"$prefix.maxDocsPerJob"),
+    config.getInt(s"$prefix.numOfWorkers")
   )
 }

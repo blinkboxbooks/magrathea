@@ -6,7 +6,7 @@ import java.net.URL
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.MergeDocuments
+import com.blinkbox.books.marvin.magrathea.event.Merger.MergeRequest
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -74,7 +74,7 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: Stri
           fetchDocuments(docSchema, docKey).map { r =>
             val respJson = parse(r.entity.asString)
             val docs = (respJson \ "rows").children
-            documentMerger ! MergeDocuments(docs)
+            documentMerger ! MergeRequest(docs)
           }
         } else {
           logger.error("An error occurred while storing document with id: \"{}\", rev: \"{}\"", id, rev)
