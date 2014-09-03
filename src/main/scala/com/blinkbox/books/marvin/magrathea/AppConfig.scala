@@ -16,7 +16,7 @@ case class ServiceConfig(api: ApiConfig, myKey: Int)
 case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL, retryInterval: FiniteDuration,
   actorTimeout: FiniteDuration, merger: MergerConfig, book: ComponentConfig, contributor: ComponentConfig)
 case class ComponentConfig(schema: String, input: QueueConfiguration, error: PublisherConfiguration)
-case class MergerConfig(maxDocsPerJob: Int, numOfWorkers: Int)
+case class MergerConfig(maxItemsPerJob: Int, numOfWorkers: Int)
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -56,7 +56,7 @@ object ComponentConfig {
 
 object MergerConfig {
   def apply(config: Config, prefix: String) = new MergerConfig(
-    config.getInt(s"$prefix.maxDocsPerJob"),
+    config.getInt(s"$prefix.maxItemsPerJob"),
     config.getInt(s"$prefix.numOfWorkers")
   )
 }

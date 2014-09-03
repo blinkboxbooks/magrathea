@@ -9,16 +9,16 @@ import com.typesafe.scalalogging.slf4j.StrictLogging
 import scala.concurrent.Future
 
 object Merger {
-  case class MergeRequest[T](docs: List[T])
-  case class MergeResponse[T](doc: T)
-  private case class MergeJob[T](key: Int, docs: List[T])
-  private case class MergeResult[T](key: Int, doc: T)
+  case class MergeRequest[T](items: List[T])
+  case class MergeResponse[T](item: T)
+  private case class MergeJob[T](key: Int, items: List[T])
+  private case class MergeResult[T](key: Int, item: T)
 }
 
 class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) => T)
   extends Actor with StrictLogging {
 
-  require(config.maxDocsPerJob > 1)
+  require(config.maxItemsPerJob > 1)
   require(config.numOfWorkers > 0)
 
   implicit val ec = context.dispatcher
@@ -33,23 +33,23 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
 
   override def receive: Receive = {
     case msg: MergeRequest[T] =>
-      msg.docs.grouped(config.maxDocsPerJob).foreach(docs => sendMergeJob(docs))
+      msg.items.grouped(config.maxItemsPerJob).foreach(items => sendMergeJob(items))
     case msg: MergeResult[T] =>
       pendingJobs -= msg.key
-      merged +:= msg.doc
+      merged +:= msg.item
       if (merged.size == 1 && pendingJobs.isEmpty)
         merged.headOption.foreach(r => resultReceiver ! MergeResponse(r))
-      else if (merged.size >= config.maxDocsPerJob || pendingJobs.isEmpty) {
-        if (merged.size > config.maxDocsPerJob)
-          logger.warn(s"Queue size is ${merged.size} (> maxDocsPerJob -- ${config.maxDocsPerJob})")
+      else if (merged.size >= config.maxItemsPerJob || pendingJobs.isEmpty) {
+        if (merged.size > config.maxItemsPerJob)
+          logger.warn(s"Queue size is ${merged.size} (> maxItemsPerJob -- ${config.maxItemsPerJob})")
         sendMergeJob(merged)
         merged = List.empty
       }
   }
 
-  private def sendMergeJob(docs: List[T]): Unit = {
-    val key = docs.hashCode()
-    master ! MergeJob(key, docs)
+  private def sendMergeJob(items: List[T]): Unit = {
+    val key = items.hashCode()
+    master ! MergeJob(key, items)
     pendingJobs += key
   }
 
@@ -63,9 +63,9 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
       Future {
         msg match {
           case msg: MergeJob[T] =>
-            val doc = msg.docs.reduceLeft(merge)
-            workSender ! MergeResult(msg.key, doc)
-            WorkComplete(doc)
+            val item = msg.items.reduceLeft(merge)
+            workSender ! MergeResult(msg.key, item)
+            WorkComplete(item)
           case _ =>
         }
       } pipeTo self
