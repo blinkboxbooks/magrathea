@@ -9,10 +9,10 @@ import com.typesafe.scalalogging.slf4j.StrictLogging
 import scala.concurrent.Future
 
 object Merger {
-  case class MergeRequest[T](items: List[T])
-  case class MergeResponse[T](item: T)
-  private case class MergeJob[T](key: Int, items: List[T])
-  private case class MergeResult[T](key: Int, item: T)
+  case class Merge[T](items: List[T])
+  case class MergeResult[T](item: T)
+  private case class Job[T](key: Int, items: List[T])
+  private case class JobResult[T](key: Int, item: T)
 }
 
 class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) => T)
@@ -32,13 +32,13 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
   var merged = List.empty[T]
 
   override def receive: Receive = {
-    case msg: MergeRequest[T] =>
+    case msg: Merge[T] =>
       msg.items.grouped(config.maxItemsPerJob).foreach(items => sendMergeJob(items))
-    case msg: MergeResult[T] =>
+    case msg: JobResult[T] =>
       pendingJobs -= msg.key
       merged +:= msg.item
       if (merged.size == 1 && pendingJobs.isEmpty)
-        merged.headOption.foreach(r => resultReceiver ! MergeResponse(r))
+        merged.headOption.foreach(r => resultReceiver ! MergeResult(r))
       else if (merged.size >= config.maxItemsPerJob || pendingJobs.isEmpty) {
         if (merged.size > config.maxItemsPerJob)
           logger.warn(s"Queue size is ${merged.size} (> maxItemsPerJob -- ${config.maxItemsPerJob})")
@@ -49,7 +49,7 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
 
   private def sendMergeJob(items: List[T]): Unit = {
     val key = items.hashCode()
-    master ! MergeJob(key, items)
+    master ! Job(key, items)
     pendingJobs += key
   }
 
@@ -62,9 +62,9 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
     override def doWork(workSender: ActorRef, msg: Any): Unit = {
       Future {
         msg match {
-          case msg: MergeJob[T] =>
+          case msg: Job[T] =>
             val item = msg.items.reduceLeft(merge)
-            workSender ! MergeResult(msg.key, item)
+            workSender ! JobResult(msg.key, item)
             WorkComplete(item)
           case _ =>
         }
