@@ -7,10 +7,13 @@ package com.blinkbox.books.marvin.magrathea.event
 import akka.actor.{ActorPath, ActorRef, ActorSystem, Props}
 import akka.pattern.PipeToSupport
 import akka.testkit.{ImplicitSender, TestKit}
+import org.junit.runner.RunWith
+import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, FunSuiteLike}
 
 import scala.concurrent.Future
 
+@RunWith(classOf[JUnitRunner])
 class DistributedWorkersSpec extends TestKit(ActorSystem("DistributedWorkersSpec"))
   with FunSuiteLike with BeforeAndAfterAll with ImplicitSender {
 
@@ -27,9 +30,7 @@ class DistributedWorkersSpec extends TestKit(ActorSystem("DistributedWorkersSpec
     }
   }
 
-  override def afterAll() {
-    system.shutdown()
-  }
+  override def afterAll(): Unit = system.shutdown()
 
   def worker(name: String) = system.actorOf(Props(
     new TestWorker(ActorPath.fromString(

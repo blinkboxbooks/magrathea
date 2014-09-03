@@ -4,8 +4,11 @@ import akka.actor.{ActorSystem, Props}
 import akka.testkit.{ImplicitSender, TestKit}
 import com.blinkbox.books.marvin.magrathea.MergerConfig
 import com.blinkbox.books.marvin.magrathea.event.Merger.{Merge, MergeResult}
+import org.junit.runner.RunWith
+import org.scalatest.junit.JUnitRunner
 import org.scalatest.{BeforeAndAfterAll, FunSuiteLike}
 
+@RunWith(classOf[JUnitRunner])
 class MergerSpec extends TestKit(ActorSystem("MergerSpec"))
   with FunSuiteLike with BeforeAndAfterAll with ImplicitSender {
 
@@ -69,21 +72,21 @@ class MergerSpec extends TestKit(ActorSystem("MergerSpec"))
 
   test("Merging 100 numbers with odd maxDocsPerJob") {
     val merger = system.actorOf(Props(new Merger(MergerConfig(3, 4), self)(merge)))
-    val list = (1 to 10).toList
+    val list = (1 to 100).toList
     merger ! Merge(list)
     expectMsg(MergeResult(list.sum))
   }
 
   test("Merging 100 numbers with even maxDocsPerJob") {
     val merger = system.actorOf(Props(new Merger(MergerConfig(4, 4), self)(merge)))
-    val list = (1 to 10).toList
+    val list = (1 to 100).toList
     merger ! Merge(list)
     expectMsg(MergeResult(list.sum))
   }
 
   test("Merging 100 numbers with 1 worker") {
     val merger = system.actorOf(Props(new Merger(MergerConfig(2, 1), self)(merge)))
-    val list = (1 to 10).toList
+    val list = (1 to 100).toList
     merger ! Merge(list)
     expectMsg(MergeResult(list.sum))
   }
