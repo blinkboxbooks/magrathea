@@ -65,27 +65,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must combine two book documents so that more recent information is emitted") {
     val bookA = sampleBook(
       ("field" -> "Old Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
       ("field" -> "New Field!") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     assert((result \ "field").extract[String] == "New Field!")
@@ -94,27 +80,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must combine two contributor documents so that more recent information is emitted") {
     val contributorA = sampleContributor(
       ("field" -> "Old Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val contributorB = sampleContributor(
       ("field" -> "New Field!") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(contributorA, contributorB)
     assert((result \ "field").extract[String] == "New Field!")
@@ -123,27 +95,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must not combine two book documents with different classifications") {
     val bookA = sampleBook(
       ("field" -> "Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
       ("field" -> "A different thing") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "a different id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "a different id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     intercept[DifferentClassificationException] {
       DocumentMerger.merge(bookA, bookB)
@@ -153,27 +111,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must not combine two contributor documents with different classifications") {
     val contributorA = sampleContributor(
       ("field" -> "Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val contributorB = sampleContributor(
       ("field" -> "A different thing") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-          ("id" -> "a different id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "a different id") )) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     intercept[DifferentClassificationException] {
       DocumentMerger.merge(contributorA, contributorB)
@@ -183,29 +127,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must not replace old data with new data, on two book documents, if it is from a less trusted source") {
     val bookA = sampleBook(
       ("field" -> "Trusted Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("role" -> "content_manager") ~
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
       ("field" -> "Less Trusted Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("role" -> "publisher_ftp") ~
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     assert((result \ "field").extract[String] == "Trusted Field")
@@ -214,29 +142,13 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
   test("Must not replace old data with new data, on two contributor documents, if it is from a less trusted source") {
     val contributorA = sampleContributor(
       ("field" -> "Trusted Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("role" -> "content_manager") ~
-          ("deliveredAt" -> DateTime.now.minusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val contributorB = sampleContributor(
       ("field" -> "Less Trusted Field") ~
-      ("classification" -> List(
-        ("realm" -> "a realm") ~
-        ("id" -> "an id")
-      )) ~
-      ("source" ->
-        ("$remaining" ->
-          ("role" -> "publisher_ftp") ~
-          ("deliveredAt" -> DateTime.now.plusMinutes(1))
-        )
-      )
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(contributorA, contributorB)
     assert((result \ "field").extract[String] == "Trusted Field")
