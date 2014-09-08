@@ -42,26 +42,6 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       )
     ) merge extraContent
 
-  private def sampleContributor(extraContent: JValue = JNothing): JValue =
-    ("_id" -> generateId) ~
-    ("$schema" -> "ingestion.contributor.metadata.v2") ~
-    ("classification" -> List(
-      ("realm" -> "contributor_id") ~
-      ("id" -> "abc123")
-    )) ~
-    ("source" ->
-      ("$remaining" ->
-        ("system" ->
-          ("name" -> "marvin/design_docs") ~
-          ("version" -> "1.0.0")
-        ) ~
-        ("role" -> "publisher_ftp") ~
-        ("username" -> "jp-publishing") ~
-        ("deliveredAt" -> DateTime.now) ~
-        ("processedAt" -> DateTime.now)
-      )
-    ) merge extraContent
-
   test("Must combine two book documents so that more recent information is emitted") {
     val bookA = sampleBook(
       ("field" -> "Old Field") ~
@@ -74,21 +54,6 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
-    assert((result \ "field").extract[String] == "New Field!")
-  }
-
-  test("Must combine two contributor documents so that more recent information is emitted") {
-    val contributorA = sampleContributor(
-      ("field" -> "Old Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    )
-    val contributorB = sampleContributor(
-      ("field" -> "New Field!") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    val result = DocumentMerger.merge(contributorA, contributorB)
     assert((result \ "field").extract[String] == "New Field!")
   }
 
@@ -108,22 +73,6 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     }
   }
 
-  test("Must not combine two contributor documents with different classifications") {
-    val contributorA = sampleContributor(
-      ("field" -> "Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    )
-    val contributorB = sampleContributor(
-      ("field" -> "A different thing") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "a different id") )) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    intercept[DifferentClassificationException] {
-      DocumentMerger.merge(contributorA, contributorB)
-    }
-  }
-
   test("Must not replace old data with new data, on two book documents, if it is from a less trusted source") {
     val bookA = sampleBook(
       ("field" -> "Trusted Field") ~
@@ -139,19 +88,34 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "field").extract[String] == "Trusted Field")
   }
 
-  test("Must not replace old data with new data, on two contributor documents, if it is from a less trusted source") {
-    val contributorA = sampleContributor(
+  test("Must not replace old data with new data, on two book documents, if it is from a less trusted source (inverted)") {
+    val bookA = sampleBook(
       ("field" -> "Trusted Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-      ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
-    val contributorB = sampleContributor(
+    val bookB = sampleBook(
       ("field" -> "Less Trusted Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-      ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+        ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
-    val result = DocumentMerger.merge(contributorA, contributorB)
+    val result = DocumentMerger.merge(bookB, bookA)
     assert((result \ "field").extract[String] == "Trusted Field")
+  }
+
+  test("Must replace old data with new data, on two book documents, if it is from the same trusted source") {
+    val bookA = sampleBook(
+      ("field" -> "A value") ~
+        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("field" -> "B value") ~
+        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val result = DocumentMerger.merge(bookB, bookA)
+    assert((result \ "field").extract[String] == "B value")
   }
 
   test("Must add sub-objects on two book documents") {
@@ -166,18 +130,6 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "things" \ "data").extract[String] == correctData)
   }
 
-  test("Must add sub-objects on two contributor documents") {
-    val contributorA = sampleContributor("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    val correctData = "Whatever"
-    val contributorB = sampleContributor(
-      ("things" -> List(("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~ ("data" -> correctData))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    val result = DocumentMerger.merge(contributorA, contributorB)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "things" \ "data").extract[String] == correctData)
-  }
-
   test("Must deep merge the same sub-objects on two book documents with different classifications") {
     val bookA = sampleBook(
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
@@ -188,67 +140,30 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     val result = DocumentMerger.merge(bookA, bookB)
     assert((result \ "things").children.size == 2)
   }
-
-  test("Must deep merge the same sub-objects on two contributor documents with different classifications") {
-    val contributorA = sampleContributor(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
-    )
-    val contributorB = sampleContributor(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
-    )
-    val result = DocumentMerger.merge(contributorA, contributorB)
-    assert((result \ "things").children.size == 2)
-  }
-
-  test("Must deep merge different sub-objects on two book documents with different classifications") {
-    val bookA = sampleBook(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
-    )
-    val bookB = sampleBook(
-      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
-    )
-    val result = DocumentMerger.merge(bookA, bookB)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "thongs").children.size == 1)
-  }
-
-  test("Must deep merge different sub-objects on two contributor documents with different classifications") {
-    val contributorA = sampleContributor(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
-    )
-    val contributorB = sampleContributor(
-      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
-    )
-    val result = DocumentMerger.merge(contributorA, contributorB)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "thongs").children.size == 1)
-  }
-
-  test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
-    val bookA = sampleBook(
-      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    )
-    val bookB = sampleBook(
-      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Newer"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    val result = DocumentMerger.merge(bookA, bookB)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "things" \ "data").extract[String] == "Newer")
-  }
-
-  test("Must replace an older sub-object with a newer one, on two contributor documents, if they have the same classification") {
-    val contributorA = sampleContributor(
-      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    )
-    val contributorB = sampleContributor(
-      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Newer"))) ~
-      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    val result = DocumentMerger.merge(contributorA, contributorB)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "things" \ "data").extract[String] == "Newer")
-  }
+//
+//  test("Must deep merge different sub-objects on two book documents with different classifications") {
+//    val bookA = sampleBook(
+//      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
+//    )
+//    val bookB = sampleBook(
+//      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
+//    )
+//    val result = DocumentMerger.merge(bookA, bookB)
+//    assert((result \ "things").children.size == 1)
+//    assert((result \ "thongs").children.size == 1)
+//  }
+//
+//  test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
+//    val bookA = sampleBook(
+//      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
+//      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+//    )
+//    val bookB = sampleBook(
+//      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Newer"))) ~
+//      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+//    )
+//    val result = DocumentMerger.merge(bookA, bookB)
+//    assert((result \ "things").children.size == 1)
+//    assert((result \ "things" \ "data").extract[String] == "Newer")
+//  }
 }
