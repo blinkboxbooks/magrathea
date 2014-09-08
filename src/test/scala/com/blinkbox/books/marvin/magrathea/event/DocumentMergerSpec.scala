@@ -178,7 +178,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "things" \ "data").extract[String] == correctData)
   }
 
-  test("Must deep merge sub-objects on two book documents with different classifications") {
+  test("Must deep merge the same sub-objects on two book documents with different classifications") {
     val bookA = sampleBook(
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
     )
@@ -189,7 +189,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "things").children.size == 2)
   }
 
-  test("Must deep merge sub-objects on two contributor documents with different classifications") {
+  test("Must deep merge the same sub-objects on two contributor documents with different classifications") {
     val contributorA = sampleContributor(
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
     )
@@ -198,6 +198,30 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(contributorA, contributorB)
     assert((result \ "things").children.size == 2)
+  }
+
+  test("Must deep merge different sub-objects on two book documents with different classifications") {
+    val bookA = sampleBook(
+      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
+    )
+    val bookB = sampleBook(
+      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
+    )
+    val result = DocumentMerger.merge(bookA, bookB)
+    assert((result \ "things").children.size == 1)
+    assert((result \ "thongs").children.size == 1)
+  }
+
+  test("Must deep merge different sub-objects on two contributor documents with different classifications") {
+    val contributorA = sampleContributor(
+      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
+    )
+    val contributorB = sampleContributor(
+      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
+    )
+    val result = DocumentMerger.merge(contributorA, contributorB)
+    assert((result \ "things").children.size == 1)
+    assert((result \ "thongs").children.size == 1)
   }
 
   test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
