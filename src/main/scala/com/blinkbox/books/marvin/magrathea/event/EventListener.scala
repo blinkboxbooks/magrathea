@@ -20,7 +20,7 @@ class EventListener(config: EventListenerConfig) {
 
   val mergedDocumentHandler = system.actorOf(Props(new MergedDocumentHandler))
   val documentMerger = system.actorOf(Props(new Merger(
-    config.merger, mergedDocumentHandler)(DocumentMerger.merge)), "document-merger")
+    config.merger, mergedDocumentHandler)(DocumentMerger.merge)).wi, "document-merger")
 
   val bookErrorHandler = errorHandler("book-error", config.book.error)
   val bookMsgHandler = system.actorOf(Props(new MessageHandler(documentMerger,

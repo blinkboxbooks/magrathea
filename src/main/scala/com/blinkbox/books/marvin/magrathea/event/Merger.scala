@@ -33,13 +33,24 @@ class Merger[T](config: MergerConfig, resultReceiver: ActorRef)(merge: (T, T) =>
 
   override def receive: Receive = {
     case msg: Merge[T] =>
+      logger.debug("Started merging")
       msg.items.grouped(config.maxItemsPerJob).foreach(items => sendMergeJob(items))
+      context.become(merging)
+    case msg: JobResult[T] =>
+      logger.warn("Received a merge-job result while not currently merging -- ignoring")
+  }
+
+  private def merging: Receive = {
+    case msg: Merge[T] =>
+      logger.warn("Received a merge request while currently merging -- ignoring")
     case msg: JobResult[T] =>
       pendingJobs -= msg.key
       merged +:= msg.item
-      if (merged.size == 1 && pendingJobs.isEmpty)
+      if (merged.size == 1 && pendingJobs.isEmpty) {
         merged.headOption.foreach(r => resultReceiver ! MergeResult(r))
-      else if (merged.size >= config.maxItemsPerJob || pendingJobs.isEmpty) {
+        logger.debug("Finished merging")
+        context.unbecome()
+      } else if (merged.size >= config.maxItemsPerJob || pendingJobs.isEmpty) {
         if (merged.size > config.maxItemsPerJob)
           logger.warn(s"Queue size is ${merged.size} (> maxItemsPerJob -- ${config.maxItemsPerJob})")
         sendMergeJob(merged)

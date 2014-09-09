@@ -90,4 +90,13 @@ class MergerSpec extends TestKit(ActorSystem("MergerSpec"))
     merger ! Merge(list)
     expectMsg(MergeResult(list.sum))
   }
+
+  test("Sending two subsequent merge requests: the 2nd should be ignored") {
+    val merger = system.actorOf(Props(new Merger(MergerConfig(2, 1), self)(merge)))
+    val list = (1 to 100).toList
+    merger ! Merge(list)
+    merger ! Merge(list)
+    expectMsg(MergeResult(list.sum))
+    expectNoMsg()
+  }
 }
