@@ -42,6 +42,22 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       )
     ) merge extraContent
 
+  test("Must combine two book documents with two unique keys") {
+    val bookA = sampleBook(
+      ("fieldA" -> "Value A") ~
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("fieldB" -> "Value B") ~
+      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val result = DocumentMerger.merge(bookA, bookB)
+    assert((result \ "fieldA").extract[String] == "Value A")
+    assert((result \ "fieldB").extract[String] == "Value B")
+  }
+
   test("Must combine two book documents so that more recent information is emitted") {
     val bookA = sampleBook(
       ("field" -> "Old Field") ~
@@ -54,7 +70,9 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
     assert((result \ "field").extract[String] == "New Field!")
+    assert((reverseResult \ "field").extract[String] == "New Field!")
   }
 
   test("Must not combine two book documents with different classifications") {
@@ -71,6 +89,9 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     intercept[DifferentClassificationException] {
       DocumentMerger.merge(bookA, bookB)
     }
+    intercept[DifferentClassificationException] {
+      DocumentMerger.merge(bookB, bookA)
+    }
   }
 
   test("Must not replace old data with new data, on two book documents, if it is from a less trusted source") {
@@ -85,7 +106,9 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
     assert((result \ "field").extract[String] == "Trusted Field")
+    assert((reverseResult \ "field").extract[String] == "Trusted Field")
   }
 
   test("Must not replace old data with new data, on two book documents, if it is from a less trusted source (inverted)") {
@@ -100,7 +123,9 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
         ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookB, bookA)
+    val reverseResult = DocumentMerger.merge(bookA, bookB)
     assert((result \ "field").extract[String] == "Trusted Field")
+    assert((reverseResult \ "field").extract[String] == "Trusted Field")
   }
 
   test("Must replace old data with new data, on two book documents, if it is from the same trusted source") {
@@ -126,8 +151,50 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
     assert((result \ "things").children.size == 1)
     assert((result \ "things" \ "data").extract[String] == correctData)
+    assert((reverseResult \ "things").children.size == 1)
+    assert((reverseResult \ "things" \ "data").extract[String] == correctData)
+  }
+
+  test("Must merge two different keys with appropriate classifications") {
+    val aNess = "a-ness"
+    val bNess = "b-ness"
+    val bookA =
+      ("source" ->
+        (aNess ->
+          ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
+          ("role" -> "publisher_ftp") ~
+          ("username" -> "jp-publishing") ~
+          ("deliveredAt" -> DateTime.now.minusMinutes(1)) ~
+          ("processedAt" -> DateTime.now.minusMinutes(1))
+        )
+      ) ~
+      (aNess ->
+        ("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~
+        ("data" -> "Item A")
+      )
+    val bookB =
+      ("source" ->
+        (bNess ->
+          ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
+          ("role" -> "publisher_ftp") ~
+          ("username" -> "jp-publishing") ~
+          ("deliveredAt" -> DateTime.now.plusMinutes(1)) ~
+          ("processedAt" -> DateTime.now.plusMinutes(1))
+        )
+      ) ~
+      (bNess ->
+        ("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~
+        ("data" -> "Item B")
+      )
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    assert((result \ aNess \ "data").extract[String] == "Item A")
+    assert((result \ bNess \ "data").extract[String] == "Item B")
+    assert((reverseResult \ aNess \ "data").extract[String] == "Item A")
+    assert((reverseResult \ bNess \ "data").extract[String] == "Item B")
   }
 
   test("Must deep merge the same sub-objects on two book documents with different classifications") {
@@ -138,32 +205,44 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
     )
     val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
     assert((result \ "things").children.size == 2)
+    assert((result \ "things" \\ "data").children.contains(JString("Item A")))
+    assert((result \ "things" \\ "data").children.contains(JString("Item B")))
+    assert((reverseResult \ "things").children.size == 2)
+    assert((reverseResult \ "things" \\ "data").children.contains(JString("Item A")))
+    assert((reverseResult \ "things" \\ "data").children.contains(JString("Item B")))
   }
-//
-//  test("Must deep merge different sub-objects on two book documents with different classifications") {
-//    val bookA = sampleBook(
-//      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
-//    )
-//    val bookB = sampleBook(
-//      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
-//    )
-//    val result = DocumentMerger.merge(bookA, bookB)
-//    assert((result \ "things").children.size == 1)
-//    assert((result \ "thongs").children.size == 1)
-//  }
-//
-//  test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
-//    val bookA = sampleBook(
-//      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
-//      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-//    )
-//    val bookB = sampleBook(
-//      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Newer"))) ~
-//      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-//    )
-//    val result = DocumentMerger.merge(bookA, bookB)
-//    assert((result \ "things").children.size == 1)
-//    assert((result \ "things" \ "data").extract[String] == "Newer")
-//  }
+
+  test("Must deep merge different sub-objects on two book documents with different classifications") {
+    val bookA = sampleBook(
+      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
+    )
+    val bookB = sampleBook(
+      "thongs" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
+    )
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    assert((result \ "things").children.size == 1)
+    assert((result \ "thongs").children.size == 1)
+    assert((reverseResult \ "things").children.size == 1)
+    assert((reverseResult \ "thongs").children.size == 1)
+  }
+
+  test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
+    val bookA = sampleBook(
+      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Newer"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    assert((result \ "things").children.size == 1)
+    assert((result \ "things" \ "data").extract[String] == "Newer")
+    assert((reverseResult \ "things").children.size == 1)
+    assert((reverseResult \ "things" \ "data").extract[String] == "Newer")
+  }
 }

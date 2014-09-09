@@ -17,7 +17,7 @@ object DocumentMerger {
   private val StaticKeys = Seq("source", "classification", "$schema")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
   // We don't compare these fields, as they're not source data or are important to the comparison
-  private val noStaticKeys: ((String, Any)) => Boolean = { case (key, _) => !StaticKeys.contains(key) }
+  private val noStaticKeys: String => Boolean = key => !StaticKeys.contains(key)
 
   def merge(docA: JValue, docB: JValue): JValue = {
     if ((docA \ "classification") != (docB \ "classification"))
@@ -26,31 +26,7 @@ object DocumentMerger {
     // "b" will be emitted, so update it with data from "a". If an element of "a"
     // is newer, ensure there's an object representing the times things were updated.
     var res = docB
-    val a: Map[String, Any] = docA.asInstanceOf[JObject].values
-//    println("before...")
-//    println(pretty(render(res)))
-    a.withFilter(noStaticKeys).foreach { case(key, value) =>
-      val aIsNewerThanB = for {
-        sourceA <- (docA \ "source" \ key).toOption orElse (docA \ "source" \ "$remaining").toOption
-        sourceB <- (docB \ "source" \ key).toOption orElse (docB \ "source" \ "$remaining").toOption
-        deliveredA = (sourceA \ "deliveredAt").extract[DateTime]
-        deliveredB = (sourceB \ "deliveredAt").extract[DateTime]
-        docBKeyExists = (docB \ key).toOption.isDefined
-      } yield deliveredA.isAfter(deliveredB) || !docBKeyExists
-
-      val aToB = for {
-        sourceA <- (docA \ "source" \ key).toOption orElse (docA \ "source" \ "$remaining").toOption
-        sourceB <- (docB \ "source" \ key).toOption orElse (docB \ "source" \ "$remaining").toOption
-        roleA = (sourceA \ "role").extract[String]
-        roleB = (sourceB \ "role").extract[String]
-        docBKeyExists = (docB \ key).toOption.isDefined
-        aIsAuthorisedToReplaceB = AuthorityRoles.indexOf(roleA) >= AuthorityRoles.indexOf(roleB) || !docBKeyExists
-        aBias = AuthorityRoles.indexOf(roleA) - AuthorityRoles.indexOf(roleB)
-      } yield (aIsAuthorisedToReplaceB, aBias)
-
-      val aIsAuthorisedToReplaceB = aToB.map(_._1)
-      val aBias = aToB.map(_._2)
-
+    docA.asInstanceOf[JObject].values.keys.filter(noStaticKeys).foreach { key =>
       var replaceContents = true
       for {
         keyA <- (docA \ key).toOption
@@ -64,24 +40,18 @@ object DocumentMerger {
         (classifiedA, classifiedB) match {
           case (Some(cA), Some(cB)) =>
             var merged = merge(cA, cB)
-            println("merged: " + pretty(render(merged)))
             // move sources out of the hash
-            val sources: JValue = merged \ "sources"
-            merged = merged.removeField {
-              case JField("source", _) => true
-              case _ => false
-            }
+            val sources: JValue = merged \ "source"
+            merged = merged.removeField(_._1 == "source")
             // turn the merged object into an array
             val asArray = merged.asInstanceOf[JObject].values.keys.map { subKey =>
               val newKey: JValue = subKey -> ("source" -> sources \ subKey)
               merged = merged merge newKey
               merged \ subKey
             }
-            println("asArray: " + pretty(render(asArray)))
             // save the array back into the result
             val newKey: JValue = key -> asArray
-            res = res merge newKey
-            println("res: " + pretty(render(res)))
+            res = res.removeField(_._1 == key) merge newKey
             replaceContents = false
           case _ =>
             // one of the two arrays isn't a proper classified array,
@@ -89,24 +59,33 @@ object DocumentMerger {
             replaceContents = true
         }
       }
-
-      for {
-        aIsNewerThanB <- aIsNewerThanB
-        aIsAuthorisedToReplaceB <- aIsAuthorisedToReplaceB
-        aBias <- aBias
-        if replaceContents
-      } {
-        val doc: JValue = if ((aIsNewerThanB && aIsAuthorisedToReplaceB) || aBias > 0) docA else docB
-        val newKey: JValue = key -> doc \ key
-        val newSourceKey: JValue = "source" -> (key -> doc \ "source" \ key)
-        res = res merge newKey merge newSourceKey
-      }
+      val docBKeyExists = (docB \ key).toOption.isDefined
+      if (!docBKeyExists) {
+        res = mergeKey(key, docA, res)
+      } else for {
+        sourceA <- (docA \ "source" \ key).toOption orElse (docA \ "source" \ "$remaining").toOption
+        sourceB <- (docB \ "source" \ key).toOption orElse (docB \ "source" \ "$remaining").toOption
+        deliveredA = (sourceA \ "deliveredAt").extract[DateTime]
+        deliveredB = (sourceB \ "deliveredAt").extract[DateTime]
+        roleA = (sourceA \ "role").extract[String]
+        roleB = (sourceB \ "role").extract[String]
+        aIsNewerThanB = deliveredA.isAfter(deliveredB)
+        aIsAuthorisedToReplaceB = AuthorityRoles.indexOf(roleA) >= AuthorityRoles.indexOf(roleB)
+        aBias = AuthorityRoles.indexOf(roleA) - AuthorityRoles.indexOf(roleB)
+        if replaceContents && ((aIsNewerThanB && aIsAuthorisedToReplaceB) || aBias > 0)
+      } res = mergeKey(key, docA, res)
     }
     res
   }
 
+  private def mergeKey(key: String, from: JValue, to: JValue) = {
+    val fromKey: JValue = key -> from \ key
+    val fromSourceKey: JValue = "source" -> (key -> from \ "source" \ key)
+    to merge fromKey merge fromSourceKey
+  }
+
   private def prepareClassifiedArray(array: JValue, parentSource: JValue): Option[JValue] =
-    classifiedArray(array.children, parentSource, "source" -> "").toOption
+    classifiedArray(array.children, parentSource, JNothing).toOption
 
   @tailrec
   private def classifiedArray(elems: List[JValue], parentSource: JValue, acc: JValue): JValue = elems match {
