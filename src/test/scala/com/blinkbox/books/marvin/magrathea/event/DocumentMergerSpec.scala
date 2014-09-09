@@ -111,23 +111,6 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "field").extract[String] == "Trusted Field")
   }
 
-  test("Must not replace old data with new data, on two book documents, if it is from a less trusted source (inverted)") {
-    val bookA = sampleBook(
-      ("field" -> "Trusted Field") ~
-        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
-    )
-    val bookB = sampleBook(
-      ("field" -> "Less Trusted Field") ~
-        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-        ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
-    )
-    val result = DocumentMerger.merge(bookB, bookA)
-    val reverseResult = DocumentMerger.merge(bookA, bookB)
-    assert((result \ "field").extract[String] == "Trusted Field")
-    assert((reverseResult \ "field").extract[String] == "Trusted Field")
-  }
-
   test("Must replace old data with new data, on two book documents, if it is from the same trusted source") {
     val bookA = sampleBook(
       ("field" -> "A value") ~
@@ -193,8 +176,12 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     assert((result \ aNess \ "data").extract[String] == "Item A")
     assert((result \ bNess \ "data").extract[String] == "Item B")
+    assert((result \ "source" \ aNess).children.size == 5)
+    assert((result \ "source" \ bNess).children.size == 5)
     assert((reverseResult \ aNess \ "data").extract[String] == "Item A")
     assert((reverseResult \ bNess \ "data").extract[String] == "Item B")
+    assert((reverseResult \ "source" \ aNess).children.size == 5)
+    assert((reverseResult \ "source" \ bNess).children.size == 5)
   }
 
   test("Must deep merge the same sub-objects on two book documents with different classifications") {

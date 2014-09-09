@@ -45,8 +45,8 @@ object DocumentMerger {
             merged = merged.removeField(_._1 == "source")
             // turn the merged object into an array
             val asArray = merged.asInstanceOf[JObject].values.keys.map { subKey =>
-              val newKey: JValue = subKey -> ("source" -> sources \ subKey)
-              merged = merged merge newKey
+              val newSubKey: JValue = subKey -> ("source" -> sources \ subKey)
+              merged = merged merge newSubKey
               merged \ subKey
             }
             // save the array back into the result
