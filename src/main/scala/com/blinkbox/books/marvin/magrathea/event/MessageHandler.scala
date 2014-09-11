@@ -4,6 +4,7 @@ import java.io.IOException
 import java.net.URL
 
 import akka.actor.ActorRef
+import akka.pattern.ask
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.event.Merger.Merge
@@ -17,11 +18,12 @@ import spray.client.pipelining._
 import spray.http.StatusCodes._
 import spray.http.Uri.Path
 import spray.http._
-import spray.httpx.Json4sJacksonSupport
+import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.annotation.tailrec
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{FiniteDuration, _}
 import scala.concurrent.{Future, TimeoutException}
+import scala.language.postfixOps
 
 class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: String, contributorSchema: String,
                      errorHandler: ErrorHandler, retryInterval: FiniteDuration)
@@ -37,82 +39,78 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: Stri
   private val bookUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/history/_view/book"))
   private val contributorUri = couchdbUrl.withPath(couchdbUrl.path ++ Path("/history/_design/history/_view/contributor"))
 
-  override protected def handleEvent(event: Event, originalSender: ActorRef) = Future {
-    val documentJson = parse(event.body.asString())
-    val key = extractLookupKey(documentJson)
-
-    logger.debug("Extracted lookup-key: {}", key)
-
-    // check if the lookup-key exists
-    lookupDocument(key).map { r =>
-      val respJson = parse(r.entity.asString)
-      val foundDocs = respJson \ "rows"
-      // If there is at least on document with that key, delete all these documents except the first and
-      // replace it with the received document's details. Otherwise, just store the received document.
-      val finalJson = if (foundDocs.children.size > 0) {
-        println(s"there are ${foundDocs.children.size} documents with this id")
-        // TODO: delete if there are more documents
-        //
-        // Merging the value of the first row with the rest of the document. This will result in a document with
-        // "_id" and "_rev" fields, which means replace the previous document with this new one.
-        val idRev = ("_id" -> (respJson \ "rows")(0) \ "value" \ "_id") ~
-                    ("_rev" -> (respJson \ "rows")(0) \ "value" \ "_rev")
-        idRev merge documentJson
-      } else {
-        documentJson
-      }
-      // store the final document
-      storeDocument(finalJson).map { r =>
-        val status = r.status
-        val resp = parse(r.entity.asString)
-        val id = (resp \ "id").extract[String]
-        val rev = (resp \ "rev").extract[String]
-        if (status == Created) {
-          logger.debug("Document stored with id: \"{}\", rev: \"{}\"", id, rev)
-          val docSchema = (finalJson \ "$schema").extract[String]
-          val docKey = compact(render(finalJson \ "classification"))
-          fetchDocuments(docSchema, docKey).map { r =>
-            val respJson = parse(r.entity.asString)
-            val docs = (respJson \ "rows").children
-            documentMerger ! Merge(docs)
-          }
-        } else {
-          logger.error("An error occurred while storing document with id: \"{}\", rev: \"{}\"", id, rev)
-        }
-      }
-    }
-  }
+  override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
+    incomingDoc <- Future(parse(event.body.asString()))
+    finalDoc <- lookupDocument(incomingDoc)
+    _ <- storeDocumentRequest(finalDoc)
+    (schema, key) <- extractSchemaAndKey(finalDoc)
+    docs <- fetchDocuments(schema, key)
+    _ <- documentMerger.ask(Merge(docs))(Timeout(5 seconds))
+  } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
   @tailrec
   final override protected def isTemporaryFailure(e: Throwable) = e.isInstanceOf[IOException] ||
     e.isInstanceOf[TimeoutException] || Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
-  private def extractLookupKey(json: JValue): String = {
-    val schema = json \ "$schema"
-    val remaining = (json \ "source" \ "$remaining")
+  private def lookupDocument(documentJson: JValue): Future[JValue] = for {
+    key <- extractLookupKey(documentJson)
+    resp <- lookupDocumentRequest(key)
+  } yield {
+    val foundDocs = resp \ "rows"
+    // If there is at least on document with that key, delete all these documents except the first and
+    // replace it with the received document's details. Otherwise, just store the received document.
+    if (foundDocs.children.size > 0) {
+      println(s"there are ${foundDocs.children.size} documents with this id")
+      // TODO: delete if there are more documents
+      //
+      // Merging the value of the first row with the rest of the document. This will result in a document with
+      // "_id" and "_rev" fields, which means replace the previous document with this new one.
+      documentJson merge ("_id" -> (resp \ "rows")(0) \ "value" \ "_id") ~
+                         ("_rev" -> (resp \ "rows")(0) \ "value" \ "_rev")
+    } else {
+      documentJson
+    }
+  }
+
+  private def extractLookupKey(document: JValue): Future[String] = Future {
+    val schema = document \ "$schema"
+    val remaining = (document \ "source" \ "$remaining")
       .removeField(_._1 == "processedAt").removeField(_._1 == "system")
-    val classification = json \ "classification"
+    val classification = document \ "classification"
     compact(render(JArray(List(schema, remaining, classification))))
   }
 
-  private def lookupDocument(key: String): Future[HttpResponse] = {
-    pipeline(Get(lookupUri.withQuery(("key", key))))
+  private def extractSchemaAndKey(document: JValue): Future[(String, String)] = Future {
+    val schema = (document \ "$schema").extract[String]
+    val key = compact(render(document \ "classification"))
+    (schema, key)
   }
 
-  private def storeDocument(document: JValue): Future[HttpResponse] = {
-    pipeline(Post(storeUri, document))
+  private def fetchDocuments(schema: String, key: String): Future[List[JValue]] = Future {
+    if (schema == bookSchema) bookUri.withQuery(("key", key))
+    else if (schema == contributorSchema) contributorUri.withQuery(("key", key))
+    else throw new IllegalArgumentException(s"Unsupported schema: $schema")
+  } flatMap { fetchUri => fetchDocumentsRequest(fetchUri) } map { d => (d \ "rows").children }
+
+  private def lookupDocumentRequest(key: String): Future[JValue] = {
+    pipeline(Get(lookupUri.withQuery(("key", key)))).map {
+      case resp if resp.status == OK => parse(resp.entity.asString)
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
   }
 
-  private def fetchDocuments(schema: String, key: String): Future[HttpResponse] = {
-    Future {
-      if (schema == bookSchema) {
-        bookUri.withQuery(("key", key))
-      } else if (schema == contributorSchema) {
-        contributorUri.withQuery(("key", key))
-      } else {
-        throw new IllegalArgumentException(s"Unsupported schema: $schema")
-      }
-    } flatMap { fetchUri => pipeline(Get(fetchUri)) }
+  private def storeDocumentRequest(document: JValue): Future[JValue] = {
+    pipeline(Post(storeUri, document)).map {
+      case resp if resp.status == Created => parse(resp.entity.asString)
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
+  }
+
+  private def fetchDocumentsRequest(uri: Uri): Future[JValue] = {
+    pipeline(Get(uri)).map {
+      case resp if resp.status == OK => parse(resp.entity.asString)
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
   }
 }
