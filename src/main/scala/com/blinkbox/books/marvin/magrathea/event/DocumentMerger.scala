@@ -14,7 +14,7 @@ object DocumentMerger {
     s"Cannot merge documents with different classifications:\n- ${compact(render(c1))}\n- ${compact(render(c2))}")
 
   implicit val json4sJacksonFormats = DefaultFormats
-  private val StaticKeys = Seq("source", "classification", "$schema")
+  private val StaticKeys = Seq("source", "classification", "$schema", "_id", "_rev")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
   // We don't compare these fields, as they're not source data or are important to the comparison
   private val noStaticKeys: String => Boolean = key => !StaticKeys.contains(key)

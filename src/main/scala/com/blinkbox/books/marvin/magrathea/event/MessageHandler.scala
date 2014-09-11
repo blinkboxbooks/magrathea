@@ -4,10 +4,8 @@ import java.io.IOException
 import java.net.URL
 
 import akka.actor.ActorRef
-import akka.pattern.ask
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.event.Merger.Merge
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -21,11 +19,11 @@ import spray.http._
 import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.annotation.tailrec
-import scala.concurrent.duration.{FiniteDuration, _}
+import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.postfixOps
 
-class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: String, contributorSchema: String,
+class MessageHandler(couchdbUrl: URL, bookSchema: String, contributorSchema: String,
                      errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
@@ -41,11 +39,12 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: Stri
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- Future(parse(event.body.asString()))
-    finalDoc <- lookupDocument(incomingDoc)
-    _ <- storeDocumentRequest(finalDoc)
-    (schema, key) <- extractSchemaAndKey(finalDoc)
-    docs <- fetchDocuments(schema, key)
-    _ <- documentMerger.ask(Merge(docs))(Timeout(5 seconds))
+    document <- lookupDocument(incomingDoc)
+    _ <- storeDocumentRequest(document)
+    (schema, key) <- extractSchemaAndKey(document)
+    docsList <- fetchDocuments(schema, key)
+    mergedDoc <- mergeDocuments(docsList)
+    _ <- storeMergedDocument(mergedDoc)
   } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
@@ -73,6 +72,14 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: Stri
     }
   }
 
+  private def mergeDocuments(documents: List[JValue]): Future[JValue] = Future {
+    documents.par.reduceLeft(DocumentMerger.merge)
+  }
+
+  private def storeMergedDocument(document: JValue) = Future {
+    println(pretty(render(document)))
+  }
+
   private def extractLookupKey(document: JValue): Future[String] = Future {
     val schema = document \ "$schema"
     val remaining = (document \ "source" \ "$remaining")
@@ -91,7 +98,7 @@ class MessageHandler(documentMerger: ActorRef, couchdbUrl: URL, bookSchema: Stri
     if (schema == bookSchema) bookUri.withQuery(("key", key))
     else if (schema == contributorSchema) contributorUri.withQuery(("key", key))
     else throw new IllegalArgumentException(s"Unsupported schema: $schema")
-  } flatMap { fetchUri => fetchDocumentsRequest(fetchUri) } map { d => (d \ "rows").children }
+  } flatMap { uri => fetchDocumentsRequest(uri).map(d => (d \ "rows").children.map(_ \ "value")) }
 
   private def lookupDocumentRequest(key: String): Future[JValue] = {
     pipeline(Get(lookupUri.withQuery(("key", key)))).map {

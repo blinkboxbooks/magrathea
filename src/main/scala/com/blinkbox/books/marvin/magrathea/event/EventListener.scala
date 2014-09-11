@@ -18,18 +18,14 @@ class EventListener(config: EventListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
-  val mergedDocumentHandler = system.actorOf(Props(new MergedDocumentHandler))
-  val documentMerger = system.actorOf(Props(new Merger(
-    config.merger, mergedDocumentHandler)(DocumentMerger.merge)), "document-merger")
-
   val bookErrorHandler = errorHandler("book-error", config.book.error)
-  val bookMsgHandler = system.actorOf(Props(new MessageHandler(documentMerger,
+  val bookMsgHandler = system.actorOf(Props(new MessageHandler(
     config.couchdbUrl, config.book.schema, config.contributor.schema,
     bookErrorHandler, config.retryInterval)), name = "book-handler")
   val bookConsumer = consumer("book-consumer", config.book.input, bookMsgHandler)
 
   val contributorErrorHandler = errorHandler("contributor-error", config.contributor.error)
-  val contributorMsgHandler = system.actorOf(Props(new MessageHandler(documentMerger,
+  val contributorMsgHandler = system.actorOf(Props(new MessageHandler(
     config.couchdbUrl, config.book.schema, config.contributor.schema,
     contributorErrorHandler, config.retryInterval)), name = "contributor-handler")
   val contributorConsumer = consumer("contributor-consumer", config.contributor.input, contributorMsgHandler)
