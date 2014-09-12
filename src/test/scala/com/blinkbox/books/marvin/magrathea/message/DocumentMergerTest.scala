@@ -8,7 +8,7 @@ import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
-import org.scalatest.FunSuiteLike
+import org.scalatest.FlatSpecLike
 import org.scalatest.junit.JUnitRunner
 import spray.httpx.Json4sJacksonSupport
 
@@ -16,7 +16,7 @@ import scala.language.{implicitConversions, postfixOps}
 import scala.util.Random
 
 @RunWith(classOf[JUnitRunner])
-class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with JsonMethods {
+class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods {
   implicit val json4sJacksonFormats = DefaultFormats
   implicit def dateTime2JValue(d: DateTime) = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
 
@@ -42,7 +42,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
       )
     ) merge extraContent
 
-  test("Must combine two book documents with two unique keys") {
+  it should "combine two book documents with two unique keys" in {
     val bookA = sampleBook(
       ("fieldA" -> "Value A") ~
       ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
@@ -58,7 +58,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "fieldB").extract[String] == "Value B")
   }
 
-  test("Must combine two book documents so that more recent information is emitted") {
+  it should "combine two book documents so that more recent information is emitted" in {
     val bookA = sampleBook(
       ("field" -> "Old Field") ~
       ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
@@ -75,7 +75,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "field").extract[String] == "New Field!")
   }
 
-  test("Must not combine two book documents with different classifications") {
+  it should "combine two book documents with different classifications" in {
     val bookA = sampleBook(
       ("field" -> "Field") ~
       ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
@@ -94,7 +94,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     }
   }
 
-  test("Must not replace old data with new data, on two book documents, if it is from a less trusted source") {
+  it should "not replace old data with new data, on two book documents, if it is from a less trusted source" in {
     val bookA = sampleBook(
       ("field" -> "Trusted Field") ~
       ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
@@ -111,7 +111,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "field").extract[String] == "Trusted Field")
   }
 
-  test("Must replace old data with new data, on two book documents, if it is from the same trusted source") {
+  it should "replace old data with new data, on two book documents, if it is from the same trusted source" in {
     val bookA = sampleBook(
       ("field" -> "A value") ~
         ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
@@ -126,7 +126,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((result \ "field").extract[String] == "B value")
   }
 
-  test("Must add sub-objects on two book documents") {
+  it should "add sub-objects on two book documents" in {
     val bookA = sampleBook("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     val correctData = "Whatever"
     val bookB = sampleBook(
@@ -141,7 +141,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "things" \ "data").extract[String] == correctData)
   }
 
-  test("Must merge two different keys with appropriate classifications") {
+  it should "merge two different keys with appropriate classifications" in {
     val aNess = "a-ness"
     val bNess = "b-ness"
     val bookA =
@@ -184,7 +184,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "source" \ bNess).children.size == 5)
   }
 
-  test("Must deep merge the same sub-objects on two book documents with different classifications") {
+  it should "deep merge the same sub-objects on two book documents with different classifications" in {
     val bookA = sampleBook(
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
     )
@@ -201,7 +201,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "things" \\ "data").children.contains(JString("Item B")))
   }
 
-  test("Must deep merge different sub-objects on two book documents with different classifications") {
+  it should "deep merge different sub-objects on two book documents with different classifications" in {
     val bookA = sampleBook(
       "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
     )
@@ -216,7 +216,7 @@ class DocumentMergerSpec extends FunSuiteLike with Json4sJacksonSupport with Jso
     assert((reverseResult \ "thongs").children.size == 1)
   }
 
-  test("Must replace an older sub-object with a newer one, on two book documents, if they have the same classification") {
+  it should "replace an older sub-object with a newer one, on two book documents, if they have the same classification" in {
     val bookA = sampleBook(
       ("things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))) ~ ("data" -> "Older"))) ~
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
