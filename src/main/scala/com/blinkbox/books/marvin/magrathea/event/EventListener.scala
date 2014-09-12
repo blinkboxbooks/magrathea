@@ -18,9 +18,11 @@ class EventListener(config: EventListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
+  val eventDao = new DefaultEventDao(config.couchDbUrl, config.schema)
+
   val eventErrorHandler = errorHandler("event-error", config.error)
-  val eventHandler = system.actorOf(Props(new MessageHandler(config.couchdbUrl,
-    config.schema, eventErrorHandler, config.retryInterval)), name = "event-handler")
+  val eventHandler = system.actorOf(Props(new MessageHandler(eventDao,
+    eventErrorHandler, config.retryInterval)), name = "event-handler")
   val eventConsumer = consumer("event-consumer", config.input, eventHandler)
 
   def start() {

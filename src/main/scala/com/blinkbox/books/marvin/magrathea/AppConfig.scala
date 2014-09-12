@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL, retryInterval: FiniteDuration,
+case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
   actorTimeout: FiniteDuration, schema: SchemaConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 
