@@ -52,8 +52,10 @@ class MessageHandler(eventDao: EventDao, errorHandler: ErrorHandler, retryInterv
     // Merging the value of the first row with the rest of the document. This will result in a document with
     // "_id" and "_rev" fields, which means replace the previous document with this new one.
     // If the first row does not exist, the document will remain unchanged.
-    document merge ("_id" -> (lookupResult \ "rows")(0) \ "value" \ "_id") ~
-                   ("_rev" -> (lookupResult \ "rows")(0) \ "value" \ "_rev")
+    if ((lookupResult \ "rows").children.size > 0)
+      document merge ("_id" -> (lookupResult \ "rows")(0) \ "value" \ "_id") ~
+                     ("_rev" -> (lookupResult \ "rows")(0) \ "value" \ "_rev")
+    else document
 
   private def normaliseDatabase(lookupResult: JValue): Future[Unit] = {
     // If there is at least on document with that key, delete all these documents except the first
