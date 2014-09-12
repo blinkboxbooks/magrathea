@@ -16,7 +16,6 @@ libraryDependencies ++= {
   val json4sV = "3.2.10"
   Seq(
     "io.spray"                  %% "spray-testkit"     % sprayV    % Test,
-    "org.json4s"                %% "json4s-jackson"    % json4sV,  // for swagger :-/
     "com.typesafe.akka"         %% "akka-slf4j"        % akkaV,
     "com.typesafe.akka"         %% "akka-testkit"      % akkaV     % Test,
     "com.blinkbox.books"        %% "common-scala-test" % "0.3.0"   % Test,
