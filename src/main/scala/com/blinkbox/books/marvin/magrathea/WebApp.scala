@@ -5,7 +5,7 @@ import akka.util.Timeout
 import com.blinkbox.books.config.Configuration
 import com.blinkbox.books.logging.{DiagnosticExecutionContext, Loggers}
 import com.blinkbox.books.marvin.magrathea.api.WebService
-import com.blinkbox.books.marvin.magrathea.event.EventListener
+import com.blinkbox.books.marvin.magrathea.message.MessageListener
 import com.blinkbox.books.spray._
 import spray.can.Http
 
@@ -20,6 +20,6 @@ object WebApp extends App with Configuration with Loggers {
   val localUrl = appConfig.service.api.localUrl
   HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))
 
-  val eventListener = new EventListener(appConfig.eventListener)
-  eventListener.start()
+  val messageListener = new MessageListener(appConfig.messageListener)
+  messageListener.start()
 }

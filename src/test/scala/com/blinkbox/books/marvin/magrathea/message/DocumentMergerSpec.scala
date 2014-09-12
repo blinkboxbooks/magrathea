@@ -1,7 +1,7 @@
-package com.blinkbox.books.marvin.magrathea.event
+package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.event.DocumentMerger.DifferentClassificationException
+import com.blinkbox.books.marvin.magrathea.message.DocumentMerger.DifferentClassificationException
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST._

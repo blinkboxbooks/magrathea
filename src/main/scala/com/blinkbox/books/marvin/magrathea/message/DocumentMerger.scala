@@ -1,4 +1,4 @@
-package com.blinkbox.books.marvin.magrathea.event
+package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
 import org.joda.time.DateTime

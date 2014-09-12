@@ -11,9 +11,9 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
+case class AppConfig(service: ServiceConfig, messageListener: MessageListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
+case class MessageListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
   actorTimeout: FiniteDuration, schema: SchemaConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 
@@ -21,7 +21,7 @@ object AppConfig {
   val prefix = "service.magrathea"
   def apply(config: Config) = new AppConfig(
     ServiceConfig(config, s"$prefix.api.public"),
-    EventListenerConfig(config, s"$prefix.eventListener"),
+    MessageListenerConfig(config, s"$prefix.messageListener"),
     SwaggerConfig(config, 1)
   )
 }
@@ -33,8 +33,8 @@ object ServiceConfig {
   )
 }
 
-object EventListenerConfig {
-  def apply(config: Config, prefix: String) = new EventListenerConfig(
+object MessageListenerConfig {
+  def apply(config: Config, prefix: String) = new MessageListenerConfig(
     RabbitMqConfig(config),
     config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,

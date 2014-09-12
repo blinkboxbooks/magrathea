@@ -1,4 +1,4 @@
-package com.blinkbox.books.marvin.magrathea.event
+package com.blinkbox.books.marvin.magrathea.message
 
 import java.io.IOException
 
@@ -18,7 +18,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.postfixOps
 
-class MessageHandler(eventDao: EventDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+class MessageHandler(messageDao: MessageDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval) with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
@@ -27,17 +27,17 @@ class MessageHandler(eventDao: EventDao, errorHandler: ErrorHandler, retryInterv
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- Future(parse(event.body.asString()))
     lookupKey = extractLookupKey(incomingDoc)
-    lookupResult <- eventDao.lookupDocument(lookupKey)
+    lookupResult <- messageDao.lookupDocument(lookupKey)
     historyDocument = normaliseDocument(incomingDoc, lookupResult)
     _ <- normaliseDatabase(lookupResult)
-    _ <- eventDao.storeHistoryDocument(historyDocument)
+    _ <- messageDao.storeHistoryDocument(historyDocument)
     (schema, key) = extractSchemaAndKey(historyDocument)
-    docsList <- eventDao.fetchHistoryDocuments(schema, key)
+    docsList <- messageDao.fetchHistoryDocuments(schema, key)
     mergedDoc = mergeDocuments(docsList)
-    _ <- eventDao.storeCurrentDocument(mergedDoc)
+    _ <- messageDao.storeCurrentDocument(mergedDoc)
   } yield ()
 
-  // Consider the error temporary if the exception or its root cause is an IO exception or timeout.
+  // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
   @tailrec
   final override protected def isTemporaryFailure(e: Throwable) = e.isInstanceOf[IOException] ||
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
@@ -63,7 +63,7 @@ class MessageHandler(eventDao: EventDao, errorHandler: ErrorHandler, retryInterv
       val deleteDocuments = "docs" -> (lookupResult \ "rows").children.drop(1).map { d =>
         ("_id" -> d \ "value" \ "_id") ~ ("_rev" -> d \ "value" \ "_rev") ~ ("_deleted" -> true)
       }
-      eventDao.deleteDocuments(deleteDocuments)
+      messageDao.deleteDocuments(deleteDocuments)
     } else Future.successful(())
   }
 

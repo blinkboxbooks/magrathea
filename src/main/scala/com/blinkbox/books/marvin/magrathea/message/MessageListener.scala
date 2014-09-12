@@ -1,16 +1,16 @@
-package com.blinkbox.books.marvin.magrathea.event
+package com.blinkbox.books.marvin.magrathea.message
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.EventListenerConfig
+import com.blinkbox.books.marvin.magrathea.MessageListenerConfig
 import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
 import com.blinkbox.books.rabbitmq.RabbitMqConsumer.QueueConfiguration
 import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, RabbitMqConsumer}
 
-class EventListener(config: EventListenerConfig) {
-  implicit val system = ActorSystem("magrathea-event")
+class MessageListener(config: MessageListenerConfig) {
+  implicit val system = ActorSystem("magrathea-message")
   implicit val executionContext = DiagnosticExecutionContext(system.dispatcher)
   implicit val timeout = Timeout(config.actorTimeout)
   sys.addShutdownHook(system.shutdown())
@@ -18,15 +18,15 @@ class EventListener(config: EventListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
-  val eventDao = new DefaultEventDao(config.couchDbUrl, config.schema)
+  val messageDao = new DefaultMessageDao(config.couchDbUrl, config.schema)
 
-  val eventErrorHandler = errorHandler("event-error", config.error)
-  val eventHandler = system.actorOf(Props(new MessageHandler(eventDao,
-    eventErrorHandler, config.retryInterval)), name = "event-handler")
-  val eventConsumer = consumer("event-consumer", config.input, eventHandler)
+  val messageErrorHandler = errorHandler("message-error", config.error)
+  val messageHandler = system.actorOf(Props(new MessageHandler(messageDao,
+    messageErrorHandler, config.retryInterval)), name = "message-handler")
+  val messageConsumer = consumer("message-consumer", config.input, messageHandler)
 
   def start() {
-    eventConsumer ! RabbitMqConsumer.Init
+    messageConsumer ! RabbitMqConsumer.Init
   }
 
   private def newConnection() = RabbitMq.reliableConnection(config.rabbitMq)

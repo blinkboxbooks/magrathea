@@ -1,4 +1,4 @@
-package com.blinkbox.books.marvin.magrathea.event
+package com.blinkbox.books.marvin.magrathea.message
 
 import java.net.URL
 import java.util.concurrent.Executors
@@ -18,7 +18,7 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-trait EventDao {
+trait MessageDao {
   def lookupDocument(key: String): Future[JValue]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
   def storeHistoryDocument(document: JValue): Future[Unit]
@@ -26,8 +26,8 @@ trait EventDao {
   def deleteDocuments(documents: JValue): Future[Unit]
 }
 
-class DefaultEventDao(couchDbUrl: URL, config: SchemaConfig)
-  extends EventDao with Json4sJacksonSupport with JsonMethods {
+class DefaultMessageDao(couchDbUrl: URL, config: SchemaConfig)
+  extends MessageDao with Json4sJacksonSupport with JsonMethods {
 
   implicit val system = ActorSystem("couchdb-system")
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
