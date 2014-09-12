@@ -14,8 +14,8 @@ import scala.concurrent.duration._
 case class AppConfig(service: ServiceConfig, eventListener: EventListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
 case class EventListenerConfig(rabbitMq: RabbitMqConfig, couchdbUrl: URL, retryInterval: FiniteDuration,
-  actorTimeout: FiniteDuration, book: ComponentConfig, contributor: ComponentConfig)
-case class ComponentConfig(schema: String, input: QueueConfiguration, error: PublisherConfiguration)
+  actorTimeout: FiniteDuration, schema: SchemaConfig, input: QueueConfiguration, error: PublisherConfiguration)
+case class SchemaConfig(book: String, contributor: String)
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -39,15 +39,15 @@ object EventListenerConfig {
     config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
-    ComponentConfig(config, s"$prefix.book"),
-    ComponentConfig(config, s"$prefix.contributor")
+    SchemaConfig(config, s"$prefix.schema"),
+    QueueConfiguration(config.getConfig(s"$prefix.input")),
+    PublisherConfiguration(config.getConfig(s"$prefix.error"))
   )
 }
 
-object ComponentConfig {
-  def apply(config: Config, prefix: String) = new ComponentConfig(
-    config.getString(s"$prefix.schema"),
-    QueueConfiguration(config.getConfig(s"$prefix.input")),
-    PublisherConfiguration(config.getConfig(s"$prefix.error"))
+object SchemaConfig {
+  def apply(config: Config, prefix: String) = new SchemaConfig(
+    config.getString(s"$prefix.book"),
+    config.getString(s"$prefix.contributor")
   )
 }

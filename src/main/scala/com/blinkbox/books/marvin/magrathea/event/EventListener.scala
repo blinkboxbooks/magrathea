@@ -18,21 +18,13 @@ class EventListener(config: EventListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
-  val bookErrorHandler = errorHandler("book-error", config.book.error)
-  val bookMsgHandler = system.actorOf(Props(new MessageHandler(
-    config.couchdbUrl, config.book.schema, config.contributor.schema,
-    bookErrorHandler, config.retryInterval)), name = "book-handler")
-  val bookConsumer = consumer("book-consumer", config.book.input, bookMsgHandler)
-
-  val contributorErrorHandler = errorHandler("contributor-error", config.contributor.error)
-  val contributorMsgHandler = system.actorOf(Props(new MessageHandler(
-    config.couchdbUrl, config.book.schema, config.contributor.schema,
-    contributorErrorHandler, config.retryInterval)), name = "contributor-handler")
-  val contributorConsumer = consumer("contributor-consumer", config.contributor.input, contributorMsgHandler)
+  val eventErrorHandler = errorHandler("event-error", config.error)
+  val eventHandler = system.actorOf(Props(new MessageHandler(config.couchdbUrl,
+    config.schema, eventErrorHandler, config.retryInterval)), name = "event-handler")
+  val eventConsumer = consumer("event-consumer", config.input, eventHandler)
 
   def start() {
-    bookConsumer ! RabbitMqConsumer.Init
-    contributorConsumer ! RabbitMqConsumer.Init
+    eventConsumer ! RabbitMqConsumer.Init
   }
 
   private def newConnection() = RabbitMq.reliableConnection(config.rabbitMq)
