@@ -18,10 +18,10 @@ class MessageListener(config: MessageListenerConfig) {
   val publisherConnection = newConnection()
   val consumerConnection = newConnection()
 
-  val messageDao = new DefaultDocumentDao(config.couchDbUrl, config.schema)
+  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schema)
 
   val messageErrorHandler = errorHandler("message-error", config.error)
-  val messageHandler = system.actorOf(Props(new MessageHandler(messageDao,
+  val messageHandler = system.actorOf(Props(new MessageHandler(documentDao,
     messageErrorHandler, config.retryInterval)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.input, messageHandler)
 

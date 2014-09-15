@@ -42,7 +42,7 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
       )
     ) merge extraContent
 
-  it should "combine two book documents with two unique keys" in {
+  "The document merger" should "combine two book documents with two unique keys" in {
     val bookA = sampleBook(
       ("fieldA" -> "Value A") ~
       ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~

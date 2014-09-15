@@ -7,7 +7,7 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST._
+import org.json4s.JsonAST.{JArray, JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.can.Http.ConnectionException
@@ -18,7 +18,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.postfixOps
 
-class MessageHandler(messageDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval) with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
@@ -27,14 +27,14 @@ class MessageHandler(messageDao: DocumentDao, errorHandler: ErrorHandler, retryI
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- Future(parse(event.body.asString()))
     lookupKey = extractLookupKey(incomingDoc)
-    lookupResult <- messageDao.lookupDocument(lookupKey)
-    historyDocument = normaliseDocument(incomingDoc, lookupResult)
-    _ <- normaliseDatabase(lookupResult)
-    _ <- messageDao.storeHistoryDocument(historyDocument)
-    (schema, key) = extractSchemaAndKey(historyDocument)
-    docsList <- messageDao.fetchHistoryDocuments(schema, key)
-    mergedDoc = mergeDocuments(docsList)
-    _ <- messageDao.storeCurrentDocument(mergedDoc)
+    lookupKeyMatches <- documentDao.lookupDocument(lookupKey)
+    normalisedIncomingDoc = normaliseDocument(incomingDoc, lookupKeyMatches)
+    _ <- normaliseDatabase(lookupKeyMatches)
+    _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
+    (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
+    history <- documentDao.fetchHistoryDocuments(schema, classification)
+    mergedDoc = mergeDocuments(history)
+    _ <- documentDao.storeLatestDocument(mergedDoc)
   } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -48,22 +48,31 @@ class MessageHandler(messageDao: DocumentDao, errorHandler: ErrorHandler, retryI
     merged.removeField(_._1 == "_id").removeField(_._1 == "_rev")
   }
 
-  private def normaliseDocument(document: JValue, lookupResult: JValue): JValue =
+  private def normaliseDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue =
     // Merging the value of the first row with the rest of the document. This will result in a document with
     // "_id" and "_rev" fields, which means replace the previous document with this new one.
     // If the first row does not exist, the document will remain unchanged.
-    if ((lookupResult \ "rows").children.size > 0)
-      document merge ("_id" -> (lookupResult \ "rows")(0) \ "value" \ "_id") ~
-                     ("_rev" -> (lookupResult \ "rows")(0) \ "value" \ "_rev")
-    else document
+    lookupKeyMatches.headOption match {
+      case Some(item) =>
+        val id = item \ "value" \ "_id"
+        val rev = item \ "value" \ "_rev"
+        if (id == JNothing || rev == JNothing)
+          throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
+        document merge (("_id" -> id.extract[String]) ~ ("_rev" -> rev.extract[String]))
+      case None => document
+    }
 
-  private def normaliseDatabase(lookupResult: JValue): Future[Unit] = {
+  private def normaliseDatabase(lookupKeyMatches: List[JValue]): Future[Unit] = {
     // If there is at least on document with that key, delete all these documents except the first
-    if ((lookupResult \ "rows").children.size > 1) {
-      val deleteDocuments = "docs" -> (lookupResult \ "rows").children.drop(1).map { d =>
-        ("_id" -> d \ "value" \ "_id") ~ ("_rev" -> d \ "value" \ "_rev") ~ ("_deleted" -> true)
+    if (lookupKeyMatches.size > 1) {
+      val deleteDocuments = lookupKeyMatches.drop(1).map { item =>
+        val id = item \ "value" \ "_id"
+        val rev = item \ "value" \ "_rev"
+        if (id == JNothing || rev == JNothing)
+          throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
+        (id.extract[String], rev.extract[String])
       }
-      messageDao.deleteDocuments(deleteDocuments)
+      documentDao.deleteDocuments(deleteDocuments)
     } else Future.successful(())
   }
 
@@ -72,12 +81,17 @@ class MessageHandler(messageDao: DocumentDao, errorHandler: ErrorHandler, retryI
     val remaining = (document \ "source" \ "$remaining")
       .removeField(_._1 == "processedAt").removeField(_._1 == "system")
     val classification = document \ "classification"
+    if (schema == JNothing || remaining == JNothing || classification == JNothing)
+      throw new IllegalArgumentException(
+        s"Cannot extract lookup key (schema, remaining, classification): ${compact(render(document))}")
     compact(render(JArray(List(schema, remaining, classification))))
   }
 
-  private def extractSchemaAndKey(document: JValue): (String, String) = {
-    val schema = (document \ "$schema").extract[String]
-    val key = compact(render(document \ "classification"))
-    (schema, key)
+  private def extractSchemaAndClassification(document: JValue): (String, String) = {
+    val schema = document \ "$schema"
+    val classification = document \ "classification"
+    if (schema == JNothing || classification == JNothing)
+      throw new IllegalArgumentException(s"Cannot extract schema and classification: ${compact(render(document))}")
+    (schema.extract[String], compact(render(classification)))
   }
 }
