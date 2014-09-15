@@ -17,7 +17,7 @@ object DocumentMerger {
   private val StaticKeys = Seq("source", "classification", "$schema", "_id", "_rev")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
   // We don't compare these fields, as they're not source data or are important to the comparison
-  private val noStaticKeys: String => Boolean = key => !StaticKeys.contains(key)
+  private val nonStaticKeys: String => Boolean = !StaticKeys.contains(_)
 
   def merge(docA: JValue, docB: JValue): JValue = {
     if ((docA \ "classification") != (docB \ "classification"))
@@ -26,7 +26,7 @@ object DocumentMerger {
     // "b" will be emitted, so update it with data from "a". If an element of "a"
     // is newer, ensure there's an object representing the times things were updated.
     var res = docB
-    docA.asInstanceOf[JObject].values.keys.filter(noStaticKeys).foreach { key =>
+    docA.asInstanceOf[JObject].values.keys.filter(nonStaticKeys).foreach { key =>
       var replaceContents = true
       for {
         keyA <- (docA \ key).toOption

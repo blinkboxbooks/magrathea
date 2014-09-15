@@ -12,6 +12,6 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system"))
   with ImplicitSender with FlatSpecLike with BeforeAndAfter with MockitoSyrup {
 
   trait TestFixture {
-    val messageDao = mock[MessageDao]
+    val messageDao = mock[DocumentDao]
   }
 }

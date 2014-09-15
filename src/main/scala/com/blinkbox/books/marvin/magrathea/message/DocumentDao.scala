@@ -18,7 +18,7 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.concurrent.{ExecutionContext, Future}
 
-trait MessageDao {
+trait DocumentDao {
   def lookupDocument(key: String): Future[JValue]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
   def storeHistoryDocument(document: JValue): Future[Unit]
@@ -26,8 +26,8 @@ trait MessageDao {
   def deleteDocuments(documents: JValue): Future[Unit]
 }
 
-class DefaultMessageDao(couchDbUrl: URL, config: SchemaConfig)
-  extends MessageDao with Json4sJacksonSupport with JsonMethods {
+class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
+  extends DocumentDao with Json4sJacksonSupport with JsonMethods {
 
   implicit val system = ActorSystem("couchdb-system")
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))

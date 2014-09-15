@@ -7,11 +7,10 @@ import spray.http.Uri.Path
 import spray.routing.HttpServiceActor
 
 class WebService(config: AppConfig) extends HttpServiceActor {
-  val that = this
   implicit val executionContext = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   val restApi = new RestApi(config.service)
   val healthService = new HealthCheckHttpService {
-    override implicit def actorRefFactory = that.actorRefFactory
+    override implicit def actorRefFactory = WebService.this.actorRefFactory
     override val basePath = Path("/")
   }
 

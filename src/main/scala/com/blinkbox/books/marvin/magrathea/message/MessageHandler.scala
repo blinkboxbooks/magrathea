@@ -18,7 +18,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.postfixOps
 
-class MessageHandler(messageDao: MessageDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+class MessageHandler(messageDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval) with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
@@ -44,7 +44,7 @@ class MessageHandler(messageDao: MessageDao, errorHandler: ErrorHandler, retryIn
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
-    val merged = documents.par.reduceLeft(DocumentMerger.merge)
+    val merged = documents.par.reduce(DocumentMerger.merge)
     merged.removeField(_._1 == "_id").removeField(_._1 == "_rev")
   }
 

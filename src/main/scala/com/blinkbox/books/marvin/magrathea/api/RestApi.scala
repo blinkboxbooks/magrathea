@@ -27,19 +27,19 @@ class RestApi(config: ServiceConfig)(implicit val actorRefFactory: ActorRefFacto
   override val responseTypeHints = ExplicitTypeHints(Map(
     classOf[ListPage[_]] -> "urn:blinkboxbooks:schema:list"))
 
-  override def getAll: Route = {
-    get {
-      pathEndOrSingleSlash {
-        uncacheable(s"myKey = ${config.myKey.toString}")
-      }
+  override def getAll: Route = get {
+    pathEndOrSingleSlash {
+      uncacheable(s"myKey = ${config.myKey.toString}")
     }
   }
 
-  val routes = rootPath(config.api.localUrl.path / "magrathea") {
+  val routes = rootPath(config.api.localUrl.path) {
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          getAll
+          path("magrathea") {
+            getAll
+          }
         }
       }
     }
