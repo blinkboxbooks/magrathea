@@ -1,5 +1,3 @@
-import AssemblyKeys._
-
 name := "magrathea"
 
 organization := "com.blinkbox.books.marvin"
@@ -26,10 +24,3 @@ libraryDependencies ++= {
 }
 
 rpmPrepSettings
-
-mergeStrategy in assembly <<= (mergeStrategy in assembly) { old =>
-  {
-    case "asm-license.txt" | "overview.html" => MergeStrategy.discard
-    case x => old(x)
-  }
-}
