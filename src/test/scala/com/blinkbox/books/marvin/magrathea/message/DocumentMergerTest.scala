@@ -54,8 +54,11 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
-    assert((result \ "fieldA").extract[String] == "Value A")
-    assert((result \ "fieldB").extract[String] == "Value B")
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "fieldA").extract[String] == "Value A")
+      assert((doc \ "fieldB").extract[String] == "Value B")
+    }
   }
 
   it should "combine two book documents so that more recent information is emitted" in {
@@ -71,8 +74,9 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "field").extract[String] == "New Field!")
-    assert((reverseResult \ "field").extract[String] == "New Field!")
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "field").extract[String] == "New Field!")
+    }
   }
 
   it should "combine two book documents with different classifications" in {
@@ -107,8 +111,9 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "field").extract[String] == "Trusted Field")
-    assert((reverseResult \ "field").extract[String] == "Trusted Field")
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "field").extract[String] == "Trusted Field")
+    }
   }
 
   it should "replace old data with new data, on two book documents, if it is from the same trusted source" in {
@@ -122,8 +127,11 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
         ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
         ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
-    val result = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "field").extract[String] == "B value")
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "field").extract[String] == "B value")
+    }
   }
 
   it should "add sub-objects on two book documents" in {
@@ -135,10 +143,10 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "things" \ "data").extract[String] == correctData)
-    assert((reverseResult \ "things").children.size == 1)
-    assert((reverseResult \ "things" \ "data").extract[String] == correctData)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 1)
+      assert((doc \ "things" \ "data").extract[String] == correctData)
+    }
   }
 
   it should "merge two different keys with appropriate classifications" in {
@@ -174,14 +182,12 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
       )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ aNess \ "data").extract[String] == "Item A")
-    assert((result \ bNess \ "data").extract[String] == "Item B")
-    assert((result \ "source" \ aNess).children.size == 5)
-    assert((result \ "source" \ bNess).children.size == 5)
-    assert((reverseResult \ aNess \ "data").extract[String] == "Item A")
-    assert((reverseResult \ bNess \ "data").extract[String] == "Item B")
-    assert((reverseResult \ "source" \ aNess).children.size == 5)
-    assert((reverseResult \ "source" \ bNess).children.size == 5)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ aNess \ "data").extract[String] == "Item A")
+      assert((doc \ bNess \ "data").extract[String] == "Item B")
+      assert((doc \ "source" \ aNess).children.size == 5)
+      assert((doc \ "source" \ bNess).children.size == 5)
+    }
   }
 
   it should "deep merge the same sub-objects on two book documents with different classifications" in {
@@ -193,12 +199,11 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "things").children.size == 2)
-    assert((result \ "things" \\ "data").children.contains(JString("Item A")))
-    assert((result \ "things" \\ "data").children.contains(JString("Item B")))
-    assert((reverseResult \ "things").children.size == 2)
-    assert((reverseResult \ "things" \\ "data").children.contains(JString("Item A")))
-    assert((reverseResult \ "things" \\ "data").children.contains(JString("Item B")))
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 2)
+      assert((doc \ "things" \\ "data").children.contains(JString("Item A")))
+      assert((doc \ "things" \\ "data").children.contains(JString("Item B")))
+    }
   }
 
   it should "deep merge different sub-objects on two book documents with different classifications" in {
@@ -210,10 +215,10 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "thongs").children.size == 1)
-    assert((reverseResult \ "things").children.size == 1)
-    assert((reverseResult \ "thongs").children.size == 1)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 1)
+      assert((doc \ "thongs").children.size == 1)
+    }
   }
 
   it should "replace an older sub-object with a newer one, on two book documents, if they have the same classification" in {
@@ -227,9 +232,9 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
-    assert((result \ "things").children.size == 1)
-    assert((result \ "things" \ "data").extract[String] == "Newer")
-    assert((reverseResult \ "things").children.size == 1)
-    assert((reverseResult \ "things" \ "data").extract[String] == "Newer")
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 1)
+      assert((doc \ "things" \ "data").extract[String] == "Newer")
+    }
   }
 }
