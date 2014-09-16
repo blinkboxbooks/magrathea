@@ -15,8 +15,8 @@ class MessageListener(config: MessageListenerConfig) {
   implicit val timeout = Timeout(config.actorTimeout)
   sys.addShutdownHook(system.shutdown())
 
-  val publisherConnection = newConnection()
-  val consumerConnection = newConnection()
+  val consumerConnection = RabbitMq.reliableConnection(config.rabbitMq)
+  val publisherConnection = RabbitMq.recoveredConnection(config.rabbitMq)
 
   val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schema)
 
@@ -28,8 +28,6 @@ class MessageListener(config: MessageListenerConfig) {
   def start() {
     messageConsumer ! RabbitMqConsumer.Init
   }
-
-  private def newConnection() = RabbitMq.recoveredConnection(config.rabbitMq)
 
   private def errorHandler(actorName: String, config: PublisherConfiguration) =
     new ActorErrorHandler(publisher(actorName, config))
