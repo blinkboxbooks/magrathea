@@ -29,7 +29,7 @@ class MessageListener(config: MessageListenerConfig) {
     messageConsumer ! RabbitMqConsumer.Init
   }
 
-  private def newConnection() = RabbitMq.reliableConnection(config.rabbitMq)
+  private def newConnection() = RabbitMq.recoveredConnection(config.rabbitMq)
 
   private def errorHandler(actorName: String, config: PublisherConfiguration) =
     new ActorErrorHandler(publisher(actorName, config))
