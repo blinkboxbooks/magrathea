@@ -44,6 +44,8 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
+    if (documents.isEmpty)
+      throw new IllegalArgumentException(s"Expected to merge a non-empty history list")
     val merged = documents.par.reduce(DocumentMerger.merge)
     merged.removeField(_._1 == "_id").removeField(_._1 == "_rev")
   }

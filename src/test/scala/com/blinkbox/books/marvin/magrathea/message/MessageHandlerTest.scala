@@ -1,6 +1,6 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import akka.actor.{ActorRef, ActorSystem, Props}
+import akka.actor.{ActorRef, ActorSystem, Props, Status}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.messaging._
@@ -15,11 +15,12 @@ import org.mockito.ArgumentCaptor
 import org.mockito.Matchers._
 import org.mockito.Mockito._
 import org.scalatest.junit.JUnitRunner
-import org.scalatest.{Matchers, BeforeAndAfterAll, FlatSpecLike}
+import org.scalatest.{BeforeAndAfterAll, FlatSpecLike, Matchers}
+import spray.can.Http.ConnectionException
 import spray.httpx.Json4sJacksonSupport
 
-import scala.concurrent.Future
 import scala.concurrent.duration._
+import scala.concurrent.{Future, TimeoutException}
 import scala.language.implicitConversions
 
 @RunWith(classOf[JUnitRunner])
@@ -35,12 +36,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   "A message handler" should "handle a book message" in new TestFixture {
     handler ! bookEvent(sampleBook())
     checkNoFailures()
+    expectMsgType[Status.Success]
   }
 
   it should "delete all lookupKeyMatches except the first" in new TestFixture {
     doReturn(Future.successful(List(lookupKeyMatch(), lookupKeyMatch(), lookupKeyMatch()))).when(documentDao).lookupDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
+    expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[List[(String, String)]])
     verify(documentDao, times(1)).deleteDocuments(captor.capture())
     captor.getValue.size shouldEqual 2
@@ -51,6 +54,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(List(lookupKey))).when(documentDao).lookupDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
+    expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[JValue])
     verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
     captor.getValue \ "_id" shouldEqual lookupKey \ "value" \ "_id"
@@ -61,6 +65,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(List.empty)).when(documentDao).lookupDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
+    expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[JValue])
     verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
     captor.getValue \ "_id" shouldEqual JNothing
@@ -70,19 +75,34 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   it should "merge even if the history has only one document" in new TestFixture {
     doReturn(Future.successful(List(sampleBook()))).when(documentDao).fetchHistoryDocuments(any[String], any[String])
     handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
   }
 
-//  it should "not merge" in new TestFixture {
-//    doReturn(Future.successful(List.empty)).when(documentDao).fetchHistoryDocuments(any[String], any[String])
-//    handler ! bookEvent(sampleBook())
-//    checkNoFailures()
-//  }
+  it should "not try to merge an empty history list" in new TestFixture {
+    val event = bookEvent(sampleBook())
+    doReturn(Future.successful(List.empty)).when(documentDao).fetchHistoryDocuments(any[String], any[String])
+    handler ! event
+    checkFailure[IllegalArgumentException](event)
+    expectMsgType[Status.Success]
+  }
 
   it should "fail if the lookup key cannot be extracted" in new TestFixture {
     val event = bookEvent("whatever" -> 5)
     handler ! event
     checkFailure[IllegalArgumentException](event)
+    expectMsgType[Status.Success]
     verify(documentDao, times(0)).lookupDocument(any[String])
+  }
+
+  it should "recover from a temporary connection failure" in new TestFixture {
+    when(documentDao.lookupDocument(any[String]))
+      .thenReturn(Future.failed(new TimeoutException()))
+      .thenReturn(Future.failed(new ConnectionException("oops")))
+      .thenReturn(Future.successful(List.empty))
+    handler ! bookEvent(sampleBook())
+    expectMsgType[Status.Success]
+    checkNoFailures()
   }
 
   trait TestFixture {
@@ -132,10 +152,10 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     def checkNoFailures() = {
       // Check that everything was called at least once.
-      verify(documentDao, times(1)).lookupDocument(any[String])
-      verify(documentDao, times(1)).storeHistoryDocument(any[JValue])
-      verify(documentDao, times(1)).fetchHistoryDocuments(any[String], any[String])
-      verify(documentDao, times(1)).storeLatestDocument(any[JValue])
+      verify(documentDao, atLeastOnce()).lookupDocument(any[String])
+      verify(documentDao, atLeastOnce()).storeHistoryDocument(any[JValue])
+      verify(documentDao, atLeastOnce()).fetchHistoryDocuments(any[String], any[String])
+      verify(documentDao, atLeastOnce()).storeLatestDocument(any[JValue])
       // Check no errors were sent.
       verify(errorHandler, times(0)).handleError(any[Event], any[Throwable])
     }
@@ -145,12 +165,6 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
       // Check event was passed on to error handler, along with the expected exception.
       val expectedExceptionClass = manifest.runtimeClass.asInstanceOf[Class[T]]
       verify(errorHandler).handleError(eql(event), isA(expectedExceptionClass))
-    }
-
-    /** Check that event was processed but ignored. */
-    def checkIgnored() = {
-      // Should not have posted an error.
-      verify(errorHandler, times(0)).handleError(any[Event], any[Throwable])
     }
   }
 }
