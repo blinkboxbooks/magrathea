@@ -26,62 +26,78 @@ object DocumentMerger {
     // "b" will be emitted, so update it with data from "a". If an element of "a"
     // is newer, ensure there's an object representing the times things were updated.
     var res = docB
-    docA.asInstanceOf[JObject].values.keys.filter(nonStaticKeys).foreach { key =>
+    docA.asInstanceOf[JObject].values.keys.filter(nonStaticKeys).foreach { field =>
       var replaceContents = true
-      for {
-        keyA <- (docA \ key).toOption
-        isArray = keyA.isInstanceOf[JArray]
-        hasChildren = keyA.children.size > 0
-        hasClassification = (keyA \ "classification").toOption.isDefined
-        if isArray && hasChildren && hasClassification
-      } {
-        val classifiedA = prepareClassifiedArray(docA \ key, docA \ "source" \ "$remaining")
-        val classifiedB = prepareClassifiedArray(docB \ key, docB \ "source" \ "$remaining")
-        (classifiedA, classifiedB) match {
-          case (Some(cA), Some(cB)) =>
-            var merged = merge(cA, cB)
-            // move sources out of the hash
-            val sources: JValue = merged \ "source"
-            merged = merged.removeField(_._1 == "source")
-            // turn the merged object into an array
-            val asArray = merged.asInstanceOf[JObject].values.keys.map { subKey =>
-              val newSubKey: JValue = subKey -> ("source" -> sources \ subKey)
-              merged = merged merge newSubKey
-              merged \ subKey
-            }
-            // save the array back into the result
-            val newKey: JValue = key -> asArray
-            res = res.removeField(_._1 == key) merge newKey
-            replaceContents = false
-          case _ =>
-            // one of the two arrays isn't a proper classified array,
-            // we must just replace the older with the newer
-            replaceContents = true
+      if (canDeepMergeField(docA, field)) {
+        deepMergeField(docA, docB, res, field).foreach { doc =>
+          res = doc
+          replaceContents = false
         }
       }
-      val docBKeyExists = (docB \ key).toOption.isDefined
-      if (!docBKeyExists) {
-        res = mergeKey(key, docA, res)
-      } else for {
-        sourceA <- (docA \ "source" \ key).toOption orElse (docA \ "source" \ "$remaining").toOption
-        sourceB <- (docB \ "source" \ key).toOption orElse (docB \ "source" \ "$remaining").toOption
-        deliveredA = (sourceA \ "deliveredAt").extract[DateTime]
-        deliveredB = (sourceB \ "deliveredAt").extract[DateTime]
-        roleA = (sourceA \ "role").extract[String]
-        roleB = (sourceB \ "role").extract[String]
-        aIsNewerThanB = deliveredA.isAfter(deliveredB)
-        aIsAuthorisedToReplaceB = AuthorityRoles.indexOf(roleA) >= AuthorityRoles.indexOf(roleB)
-        aBias = AuthorityRoles.indexOf(roleA) - AuthorityRoles.indexOf(roleB)
-        if replaceContents && ((aIsNewerThanB && aIsAuthorisedToReplaceB) || aBias > 0)
-      } res = mergeKey(key, docA, res)
+      if (canReplaceField(docA, docB, field, replaceContents)) {
+        res = replaceField(field, docA, res)
+      }
     }
     res
   }
 
-  private def mergeKey(key: String, from: JValue, to: JValue) = {
-    val fromKey: JValue = key -> from \ key
-    val fromSourceKey: JValue = "source" -> (key -> from \ "source" \ key)
-    to merge fromKey merge fromSourceKey
+  private def canDeepMergeField(doc: JValue, field: String): Boolean =
+    (for {
+      key <- (doc \ field).toOption
+      isArray = key.isInstanceOf[JArray]
+      hasChildren = key.children.size > 0
+      hasClassification = (key \ "classification").toOption.isDefined
+    } yield isArray && hasChildren && hasClassification) match {
+      case Some(value) => value
+      case _ => false
+    }
+
+  private def canReplaceField(docA: JValue, docB: JValue, field: String, replaceContents: Boolean): Boolean =
+    if ((docB \ field) == JNothing) true
+    else (for {
+      sourceA <- (docA \ "source" \ field).toOption orElse (docA \ "source" \ "$remaining").toOption
+      sourceB <- (docB \ "source" \ field).toOption orElse (docB \ "source" \ "$remaining").toOption
+      deliveredA = (sourceA \ "deliveredAt").extract[DateTime]
+      deliveredB = (sourceB \ "deliveredAt").extract[DateTime]
+      roleA = (sourceA \ "role").extract[String]
+      roleB = (sourceB \ "role").extract[String]
+      aIsNewerThanB = deliveredA.isAfter(deliveredB)
+      aIsAuthorisedToReplaceB = AuthorityRoles.indexOf(roleA) >= AuthorityRoles.indexOf(roleB)
+      aBias = AuthorityRoles.indexOf(roleA) - AuthorityRoles.indexOf(roleB)
+    } yield replaceContents && ((aIsNewerThanB && aIsAuthorisedToReplaceB) || aBias > 0)) match {
+      case Some(value) => value
+      case _ => false
+    }
+
+  private def replaceField(field: String, docA: JValue, docB: JValue): JValue = {
+    val fromKey: JValue = field -> docA \ field
+    val fromSourceKey: JValue = "source" -> (field -> docA \ "source" \ field)
+    docB merge fromKey merge fromSourceKey
+  }
+
+  private def deepMergeField(docA: JValue, docB: JValue, current: JValue, field: String): Option[JValue] = {
+    val classifiedA = prepareClassifiedArray(docA \ field, docA \ "source" \ "$remaining")
+    val classifiedB = prepareClassifiedArray(docB \ field, docB \ "source" \ "$remaining")
+    (classifiedA, classifiedB) match {
+      case (Some(cA), Some(cB)) =>
+        var merged = merge(cA, cB)
+        // move sources out of the hash
+        val sources: JValue = merged \ "source"
+        merged = merged.removeField(_._1 == "source")
+        // turn the merged object into an array
+        val asArray = merged.asInstanceOf[JObject].values.keys.map { subKey =>
+          val newSubKey: JValue = subKey -> ("source" -> sources \ subKey)
+          merged = merged merge newSubKey
+          merged \ subKey
+        }
+        // save the array back into the result
+        val newKey: JValue = field -> asArray
+        Some(current.removeField(_._1 == field) merge newKey)
+      case _ =>
+        // one of the two arrays isn't a proper classified array,
+        // we must just replace the older with the newer
+        None
+    }
   }
 
   private def prepareClassifiedArray(array: JValue, parentSource: JValue): Option[JValue] =
