@@ -5,6 +5,7 @@ import java.io.IOException
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.{JArray, JNothing, JValue}
@@ -16,7 +17,7 @@ import spray.httpx.Json4sJacksonSupport
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
-import scala.language.postfixOps
+import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   extends ReliableEventHandler(errorHandler, retryInterval) with StrictLogging with Json4sJacksonSupport with JsonMethods {
@@ -47,7 +48,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     if (documents.isEmpty)
       throw new IllegalArgumentException(s"Expected to merge a non-empty history list")
     val merged = documents.par.reduce(DocumentMerger.merge)
-    merged.removeField(_._1 == "_id").removeField(_._1 == "_rev")
+    merged.removeDirectField("_id").removeDirectField("_rev")
   }
 
   private def normaliseDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue =
@@ -81,7 +82,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
   private def extractLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
     val remaining = (document \ "source" \ "$remaining")
-      .removeField(_._1 == "processedAt").removeField(_._1 == "system")
+      .removeDirectField("processedAt").removeDirectField("system")
     val classification = document \ "classification"
     if (schema == JNothing || remaining == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
