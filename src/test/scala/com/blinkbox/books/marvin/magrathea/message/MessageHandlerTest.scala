@@ -33,6 +33,8 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
   override protected def afterAll(): Unit = system.shutdown()
 
+  private def testMerge(docA: JValue, docB: JValue): JValue = docA merge docB
+
   "A message handler" should "handle a book message" in new TestFixture {
     handler ! bookEvent(sampleBook())
     checkNoFailures()
@@ -121,7 +123,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(documentDao).storeHistoryDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).deleteDocuments(any[List[(String, String)]])
 
-    val handler: ActorRef = TestActorRef(Props(new MessageHandler(documentDao, errorHandler, retryInterval)))
+    val handler: ActorRef = TestActorRef(Props(new MessageHandler(documentDao, errorHandler, retryInterval)(testMerge)))
 
     def sampleBook(extraContent: JValue = JNothing): JValue = {
       ("$schema" -> "ingestion.book.metadata.v2") ~

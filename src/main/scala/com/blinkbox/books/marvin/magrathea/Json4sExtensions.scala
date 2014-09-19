@@ -8,6 +8,7 @@ import scala.language.implicitConversions
 object Json4sExtensions {
   class BetterJValue(val v: JValue) {
     def removeDirectField(field: String): JValue = v.remove(_ == v \ field)
+    def withoutClassification: JValue = removeDirectField("classification")
   }
   implicit def jValueToBetterJValue(v: JValue) = new BetterJValue(v)
 }

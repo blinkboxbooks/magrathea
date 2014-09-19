@@ -45,38 +45,38 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
   "The document merger" should "combine two book documents with two unique keys" in {
     val bookA = sampleBook(
       ("fieldA" -> "Value A") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
       ("fieldB" -> "Value B") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
-      assert((doc \ "fieldA").extract[String] == "Value A")
-      assert((doc \ "fieldB").extract[String] == "Value B")
+      assert(doc \ "fieldA" == JString("Value A"))
+      assert(doc \ "fieldB" == JString("Value B"))
     }
+    assert(result \ "source" \ "fieldB" != JNothing)
+    assert(reverseResult \ "source" \ "fieldA" != JNothing)
   }
 
   it should "combine two book documents so that more recent information is emitted" in {
     val bookA = sampleBook(
-      ("field" -> "Old Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("common_field" -> "Old Field") ~
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
-      ("field" -> "New Field!") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("common_field" -> "New Field!") ~
       ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
-      assert((doc \ "field").extract[String] == "New Field!")
+      assert(doc \ "common_field" == JString("New Field!"))
     }
+    assert(result \ "source" \ "common_field" != JNothing)
+    assert(reverseResult \ "source" \ "common_field" == JNothing)
   }
 
   it should "refuse to combine two book documents with different classifications" in {
@@ -100,38 +100,38 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
 
   it should "not replace old data with new data, on two book documents, if it is from a less trusted source" in {
     val bookA = sampleBook(
-      ("field" -> "Trusted Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("trust" -> "Trusted Field") ~
       ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
-      ("field" -> "Less Trusted Field") ~
-      ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
+      ("trust" -> "Less Trusted Field") ~
       ("source" -> ("$remaining" -> ("role" -> "publisher_ftp") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
-      assert((doc \ "field").extract[String] == "Trusted Field")
+      assert(doc \ "trust" == JString("Trusted Field"))
     }
+    assert(result \ "source" \ "trust" == JNothing)
+    assert(reverseResult \ "source" \ "trust" != JNothing)
   }
 
   it should "replace old data with new data, on two book documents, if it is from the same trusted source" in {
     val bookA = sampleBook(
-      ("field" -> "A value") ~
-        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+      ("data" -> "A value") ~
+      ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.minusMinutes(1))))
     )
     val bookB = sampleBook(
-      ("field" -> "B value") ~
-        ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "an id"))) ~
-        ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+      ("data" -> "B value") ~
+      ("source" -> ("$remaining" -> ("role" -> "content_manager") ~ ("deliveredAt" -> DateTime.now.plusMinutes(1))))
     )
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
-      assert((doc \ "field").extract[String] == "B value")
+      assert(doc \ "data" == JString("B value"))
     }
+    assert(result \ "source" \ "data" != JNothing)
+    assert(reverseResult \ "source" \ "data" == JNothing)
   }
 
   it should "add sub-objects on two book documents" in {
@@ -145,49 +145,44 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
       assert((doc \ "things").children.size == 1)
-      assert((doc \ "things" \ "data").extract[String] == correctData)
+      assert(doc \ "things" \ "data" == JString(correctData))
     }
+    assert(result \ "source" \ "things" != JNothing)
+    assert(reverseResult \ "source" \ "things" == JNothing)
   }
 
   it should "merge two different keys with appropriate classifications" in {
-    val aNess = "a-ness"
-    val bNess = "b-ness"
     val bookA =
-      ("source" ->
-        (aNess ->
-          ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
-          ("role" -> "publisher_ftp") ~
-          ("username" -> "jp-publishing") ~
-          ("deliveredAt" -> DateTime.now.minusMinutes(1)) ~
-          ("processedAt" -> DateTime.now.minusMinutes(1))
-        )
+      ("source" -> ("a-ness" ->
+        ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
+        ("role" -> "publisher_ftp") ~
+        ("username" -> "jp-publishing") ~
+        ("deliveredAt" -> DateTime.now.minusMinutes(1)) ~
+        ("processedAt" -> DateTime.now.minusMinutes(1)))
       ) ~
-      (aNess ->
-        ("classification" -> List(("realm" -> "type") ~ ("id" -> aNess))) ~
+      ("a-ness" ->
+        ("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~
         ("data" -> "Item A")
       )
     val bookB =
-      ("source" ->
-        (bNess ->
-          ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
-          ("role" -> "publisher_ftp") ~
-          ("username" -> "jp-publishing") ~
-          ("deliveredAt" -> DateTime.now.plusMinutes(1)) ~
-          ("processedAt" -> DateTime.now.plusMinutes(1))
-        )
+      ("source" -> ("b-ness" ->
+        ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
+        ("role" -> "publisher_ftp") ~
+        ("username" -> "jp-publishing") ~
+        ("deliveredAt" -> DateTime.now.plusMinutes(1)) ~
+        ("processedAt" -> DateTime.now.plusMinutes(1)))
       ) ~
-      (bNess ->
-        ("classification" -> List(("realm" -> "type") ~ ("id" -> bNess))) ~
+      ("b-ness" ->
+        ("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~
         ("data" -> "Item B")
       )
-
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
-      assert((doc \ aNess \ "data").extract[String] == "Item A")
-      assert((doc \ bNess \ "data").extract[String] == "Item B")
-      assert((doc \ "source" \ aNess).children.size == 5)
-      assert((doc \ "source" \ bNess).children.size == 5)
+      assert(doc \ "a-ness" \ "data" == JString("Item A"))
+      assert(doc \ "b-ness" \ "data" == JString("Item B"))
+      assert(doc \ "source" \ "a-ness" != JNothing)
+      assert(doc \ "source" \ "b-ness" != JNothing)
     }
   }
 
@@ -220,6 +215,8 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
       assert((doc \ "things").children.size == 1)
       assert((doc \ "thongs").children.size == 1)
     }
+    assert(result \ "source" \ "thongs" != JNothing)
+    assert(result \ "source" \ "things" == JNothing)
   }
 
   it should "replace an older sub-object with a newer one, on two book documents, if they have the same classification" in {
@@ -235,8 +232,10 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
       assert((doc \ "things").children.size == 1)
-      assert((doc \ "things" \ "data").extract[String] == "Newer")
+      assert(doc \ "things" \ "data" == JString("Newer"))
     }
+    assert(result \ "things" \\ "source" != JObject(List.empty))
+    assert(reverseResult \ "things" \\ "source" == JObject(List.empty))
   }
 
   it should "replace an older object with a newer one, and merge the unique ones" in {
@@ -254,8 +253,37 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
       assert((doc \ "cool").children == List[JValue]("t3" -> 3, "t4" -> 4))
-      assert((doc \ "a-cool").children == List[JValue]("cool" -> "a","sweet" -> "2"))
+      assert((doc \ "a-cool").children == List[JValue]("cool" -> "a", "sweet" -> "2"))
       assert((doc \ "b-cool").children == List[JValue]("cool" -> "b", "sweet" -> "2"))
+    }
+    assert(result \ "source" \ "cool" != JNothing)
+    assert(result \ "source" \ "b-cool" != JNothing)
+    assert(reverseResult \ "source" \ "cool" == JNothing)
+    assert(reverseResult \ "source" \ "a-cool" != JNothing)
+  }
+
+  it should "correctly merge object fields and sub keys should be treated as if they were parent keys" in {
+    val bookA = sampleBook(
+      ("a" -> ("b" -> "1ab")) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("a" -> ("c" -> "2ac")) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now)))
+    )
+    val bookC = sampleBook(
+      ("a" -> ("b" -> "3ab")) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val resultA = DocumentMerger.merge(bookA, bookB)
+    val reverseResultA = DocumentMerger.merge(bookB, bookA)
+    val resultB = DocumentMerger.merge(bookA, bookC)
+    val reverseResultB = DocumentMerger.merge(bookC, bookA)
+    Seq(resultA, reverseResultA).foreach { doc =>
+      assert(doc \ "a" == (("b" -> "1ab") ~ ("c" -> "2ac")))
+    }
+    Seq(resultB, reverseResultB).foreach { doc =>
+      assert(doc \ "a" == JObject(List[JField]("b" -> "3ab"): _*))
     }
   }
 }

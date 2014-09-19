@@ -22,7 +22,7 @@ class MessageListener(config: MessageListenerConfig) {
 
   val messageErrorHandler = errorHandler("message-error", config.error)
   val messageHandler = system.actorOf(Props(new MessageHandler(documentDao,
-    messageErrorHandler, config.retryInterval)), name = "message-handler")
+    messageErrorHandler, config.retryInterval)(DocumentMerger.merge)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.input, messageHandler)
 
   def start() {

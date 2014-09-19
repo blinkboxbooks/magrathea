@@ -20,7 +20,8 @@ import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  extends ReliableEventHandler(errorHandler, retryInterval) with StrictLogging with Json4sJacksonSupport with JsonMethods {
+                    (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
+  with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
@@ -47,7 +48,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
   private def mergeDocuments(documents: List[JValue]): JValue = {
     if (documents.isEmpty)
       throw new IllegalArgumentException(s"Expected to merge a non-empty history list")
-    val merged = documents.par.reduce(DocumentMerger.merge)
+    val merged = documents.par.reduce(documentMerge)
     merged.removeDirectField("_id").removeDirectField("_rev")
   }
 
