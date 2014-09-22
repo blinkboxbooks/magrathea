@@ -238,6 +238,59 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     assert(reverseResult \ "things" \\ "source" == JObject(List.empty))
   }
 
+  it should "merge classified arrays with duplicate keys" in {
+    val aNessClassification: JField = "classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))
+    val pNessClassification: JField = "classification" -> List(("realm" -> "type") ~ ("id" -> "p-ness"))
+    val bookA = sampleBook(
+      ("things" -> List(
+        aNessClassification ~ ("a" -> "Older"),
+        aNessClassification ~ ("b" -> "Older")
+      )) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("things" -> List(
+        pNessClassification ~ ("c" -> "Newer"),
+        pNessClassification ~ ("d" -> "Newer")
+      )) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val aSource: JField = "source" -> bookA \ "source"
+    val bSource: JField = "source" -> bookB \ "source"
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 2)
+    }
+    assert((result \ "things").children.contains(aNessClassification ~ ("a" -> "Older") ~ ("b" -> "Older")))
+    assert((result \ "things").children.contains(pNessClassification ~ ("c" -> "Newer") ~ ("d" -> "Newer") ~ bSource))
+    assert((reverseResult \ "things").children.contains(aNessClassification ~ ("a" -> "Older") ~ ("b" -> "Older") ~ aSource))
+    assert((reverseResult \ "things").children.contains(pNessClassification ~ ("c" -> "Newer") ~ ("d" -> "Newer")))
+  }
+
+  it should "merge classified arrays with the same classification, with multiple keys along with their source" in {
+    val aNessClassification: JField = "classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))
+    val bookA = sampleBook(
+      ("things" -> List(aNessClassification ~ ("a" -> "Older") ~ ("b" -> "Older"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.minusMinutes(1))))
+    )
+    val bookB = sampleBook(
+      ("things" -> List(aNessClassification ~ ("b" -> "Newer") ~ ("c" -> "Newer"))) ~
+      ("source" -> ("$remaining" -> ("deliveredAt" -> DateTime.now.plusMinutes(1))))
+    )
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    Seq(result, reverseResult).foreach { doc =>
+      assert((doc \ "things").children.size == 1)
+      assert((doc \ "things")(0) \ "a" == JString("Older"))
+      assert((doc \ "things")(0) \ "b" == JString("Newer"))
+      assert((doc \ "things")(0) \ "c" == JString("Newer"))
+    }
+    assert(result \ "things" \ "source" \ "c" == bookB \ "source" \ "$remaining")
+    assert(result \ "things" \ "source" \ "b" == bookB \ "source" \ "$remaining")
+    assert(reverseResult \ "things" \ "source" \ "a" == bookA \ "source" \ "$remaining")
+  }
+
   it should "replace an older object with a newer one, and merge the unique ones" in {
     val bookA = sampleBook(
       ("a-cool" -> List("cool" -> "a","sweet" -> "2")) ~
