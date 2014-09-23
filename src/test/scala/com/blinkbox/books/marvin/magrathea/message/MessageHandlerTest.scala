@@ -41,14 +41,18 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     expectMsgType[Status.Success]
   }
 
-  it should "delete all lookupKeyMatches except the first" in new TestFixture {
-    doReturn(Future.successful(List(lookupKeyMatch(), lookupKeyMatch(), lookupKeyMatch()))).when(documentDao).lookupHistoryDocument(any[String])
+  it should "delete all history lookupKeyMatches except the first" in new TestFixture {
+    val kmA, kmB, kmC = lookupKeyMatch()
+    doReturn(Future.successful(List(kmA, kmB, kmC))).when(documentDao).lookupHistoryDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[List[(String, String)]])
     verify(documentDao, times(1)).deleteHistoryDocuments(captor.capture())
-    captor.getValue.size shouldEqual 2
+    captor.getValue shouldEqual List(
+      ((kmB \ "value" \ "_id").extract[String], (kmB \ "value" \ "_rev").extract[String]),
+      ((kmC \ "value" \ "_id").extract[String], (kmC \ "value" \ "_rev").extract[String])
+    )
   }
 
   it should "store and override the incoming document if there is at least one lookup match" in new TestFixture {
@@ -72,6 +76,20 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
     captor.getValue \ "_id" shouldEqual JNothing
     captor.getValue \ "_rev" shouldEqual JNothing
+  }
+
+  it should "delete all latest lookupKeyMatches except the first" in new TestFixture {
+    val kmA, kmB, kmC = lookupKeyMatch()
+    doReturn(Future.successful(List(kmA, kmB, kmC))).when(documentDao).lookupLatestDocument(any[String])
+    handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[List[(String, String)]])
+    verify(documentDao, times(1)).deleteLatestDocuments(captor.capture())
+    captor.getValue shouldEqual List(
+      ((kmB \ "value" \ "_id").extract[String], (kmB \ "value" \ "_rev").extract[String]),
+      ((kmC \ "value" \ "_id").extract[String], (kmC \ "value" \ "_rev").extract[String])
+    )
   }
 
   it should "store and override the merged document if there is at least one lookup match" in new TestFixture {
@@ -146,6 +164,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(documentDao).storeLatestDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).storeHistoryDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).deleteHistoryDocuments(any[List[(String, String)]])
+    doReturn(Future.successful(())).when(documentDao).deleteLatestDocuments(any[List[(String, String)]])
 
     val handler: ActorRef = TestActorRef(Props(new MessageHandler(documentDao, errorHandler, retryInterval)(testMerge)))
 
@@ -181,6 +200,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
       verify(documentDao, atLeastOnce()).lookupHistoryDocument(any[String])
       verify(documentDao, atLeastOnce()).storeHistoryDocument(any[JValue])
       verify(documentDao, atLeastOnce()).fetchHistoryDocuments(any[String], any[String])
+      verify(documentDao, atLeastOnce()).lookupLatestDocument(any[String])
       verify(documentDao, atLeastOnce()).storeLatestDocument(any[JValue])
       // Check no errors were sent.
       verify(errorHandler, times(0)).handleError(any[Event], any[Throwable])

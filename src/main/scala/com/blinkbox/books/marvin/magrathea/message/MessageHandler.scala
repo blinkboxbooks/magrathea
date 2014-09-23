@@ -31,7 +31,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     historyLookupKey = extractHistoryLookupKey(incomingDoc)
     historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
     normalisedIncomingDoc = normaliseDocument(incomingDoc, historyLookupKeyMatches)
-    _ <- normaliseDatabase(historyLookupKeyMatches)
+    _ <- normaliseDatabase(historyLookupKeyMatches)(documentDao.deleteHistoryDocuments)
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
     history <- documentDao.fetchHistoryDocuments(schema, classification)
@@ -39,6 +39,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     latestLookupKey = extractLatestLookupKey(mergedDoc)
     latestLookupKeyMatches <- documentDao.lookupLatestDocument(latestLookupKey)
     normalisedMergedDoc = normaliseDocument(mergedDoc, latestLookupKeyMatches)
+    _ <- normaliseDatabase(latestLookupKeyMatches)(documentDao.deleteLatestDocuments)
     _ <- documentDao.storeLatestDocument(normalisedMergedDoc)
   } yield ()
 
@@ -69,7 +70,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
       case None => document
     }
 
-  private def normaliseDatabase(lookupKeyMatches: List[JValue]): Future[Unit] = {
+  private def normaliseDatabase(lookupKeyMatches: List[JValue])(f: List[(String, String)] => Future[Unit]): Future[Unit] =
     // If there is at least on document with that key, delete all these documents except the first
     if (lookupKeyMatches.size > 1) {
       val deleteDocuments = lookupKeyMatches.drop(1).map { item =>
@@ -79,9 +80,8 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
           throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
         (id.extract[String], rev.extract[String])
       }
-      documentDao.deleteHistoryDocuments(deleteDocuments)
+      f(deleteDocuments)
     } else Future.successful(())
-  }
 
   private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"

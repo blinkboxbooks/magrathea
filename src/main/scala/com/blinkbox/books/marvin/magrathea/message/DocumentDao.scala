@@ -26,6 +26,7 @@ trait DocumentDao {
   def storeHistoryDocument(document: JValue): Future[Unit]
   def storeLatestDocument(document: JValue): Future[Unit]
   def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
+  def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
 class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
@@ -40,6 +41,7 @@ class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
   private val storeHistoryUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history"))
   private val storeLatestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest"))
   private val deleteHistoryUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_bulk_docs"))
+  private val deleteLatestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest/_bulk_docs"))
   private val bookUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_design/history/_view/book"))
   private val contributorUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_design/history/_view/contributor"))
 
@@ -78,6 +80,14 @@ class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
   override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] =
     getDeleteJson(documents).flatMap { json =>
       pipeline(Post(deleteHistoryUri, json)).map {
+        case resp if resp.status == Created => ()
+        case resp => throw new UnsuccessfulResponseException(resp)
+      }
+    }
+
+  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] =
+    getDeleteJson(documents).flatMap { json =>
+      pipeline(Post(deleteLatestUri, json)).map {
         case resp if resp.status == Created => ()
         case resp => throw new UnsuccessfulResponseException(resp)
       }
