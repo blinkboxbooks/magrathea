@@ -12,6 +12,7 @@ import shapeless.Typeable._
 
 import scala.collection.mutable
 import scala.language.implicitConversions
+import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 
 /**
  * Merging algorithm rules:
@@ -24,7 +25,7 @@ object DocumentMerger {
   case class DocWithSrc[T](doc: T, src: JValue)
 
   implicit val json4sJacksonFormats = DefaultFormats
-  private val StaticKeys = Seq("source", "classification", "$schema", "_id", "_rev")
+  private val StaticKeys = Seq("source", "classification", "$schema")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
   private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
 
@@ -36,9 +37,12 @@ object DocumentMerger {
       s"Cannot find document source in ${compact(render(docA))}"))
     val srcB = (docB \ "source").cast[JObject].getOrElse(throw new IllegalArgumentException(
       s"Cannot find document source in ${compact(render(docB))}"))
-    val res = doMerge(docA, docB, srcA, srcB, JNothing)
+
+    val res = doMerge(purify(docA), purify(docB), srcA, srcB, JNothing)
     res.doc merge res.src
   }
+
+  private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
 
   private def doMerge(valA: JValue, valB: JValue, srcA: JObject, srcB: JObject, srcAcc: JValue,
                       key: Option[String] = None): DocWithSrc[JValue] = (valA, valB) match {

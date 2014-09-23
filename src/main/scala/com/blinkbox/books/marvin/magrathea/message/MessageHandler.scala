@@ -1,14 +1,15 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import java.io.IOException
+import java.util.concurrent.Executors
 
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.{JArray, JNothing, JValue}
+import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.can.Http.ConnectionException
@@ -16,18 +17,19 @@ import spray.httpx.Json4sJacksonSupport
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{Future, TimeoutException}
+import scala.concurrent.{ExecutionContext, Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
                     (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
+  implicit override val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
-    incomingDoc <- Future(parse(event.body.asString()))
+    incomingDoc <- parseDocument(event.body.asString())
     historyLookupKey = extractHistoryLookupKey(incomingDoc)
     historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
     normalisedIncomingDoc = normaliseDocument(incomingDoc, historyLookupKeyMatches)
@@ -45,15 +47,21 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
   @tailrec
-  final override protected def isTemporaryFailure(e: Throwable) = e.isInstanceOf[IOException] ||
+  final override protected def isTemporaryFailure(e: Throwable) =
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
     if (documents.isEmpty)
-      throw new IllegalArgumentException(s"Expected to merge a non-empty history list")
+      throw new IllegalArgumentException("Expected to merge a non-empty history list")
     val merged = documents.par.reduce(documentMerge)
+    logger.info("Merged document")
     merged.removeDirectField("_id").removeDirectField("_rev")
+  }
+
+  private def parseDocument(json: String): Future[JValue] = Future {
+    logger.info("Received document")
+    parse(json)
   }
 
   private def normaliseDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue =
@@ -62,26 +70,23 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     // If the first row does not exist, the document will remain unchanged.
     lookupKeyMatches.headOption match {
       case Some(item) =>
-        val id = item \ "value" \ "_id"
-        val rev = item \ "value" \ "_rev"
-        if (id == JNothing || rev == JNothing)
-          throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
-        document merge (("_id" -> id.extract[String]) ~ ("_rev" -> rev.extract[String]))
+        logger.debug("Normalised document to override")
+        val idRev = extractIdRev(item)
+        document merge (("_id" -> idRev._1) ~ ("_rev" -> idRev._2))
       case None => document
     }
 
   private def normaliseDatabase(lookupKeyMatches: List[JValue])(f: List[(String, String)] => Future[Unit]): Future[Unit] =
     // If there is at least on document with that key, delete all these documents except the first
-    if (lookupKeyMatches.size > 1) {
-      val deleteDocuments = lookupKeyMatches.drop(1).map { item =>
-        val id = item \ "value" \ "_id"
-        val rev = item \ "value" \ "_rev"
-        if (id == JNothing || rev == JNothing)
-          throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
-        (id.extract[String], rev.extract[String])
-      }
-      f(deleteDocuments)
-    } else Future.successful(())
+    if (lookupKeyMatches.size > 1) f(lookupKeyMatches.drop(1).map(extractIdRev)) else Future.successful(())
+
+  private def extractIdRev(item: JValue): (String, String) = {
+    val id = item \ "value" \ "_id"
+    val rev = item \ "value" \ "_rev"
+    if (id == JNothing || rev == JNothing)
+      throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
+    (id.extract[String], rev.extract[String])
+  }
 
   private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
@@ -91,7 +96,9 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     if (schema == JNothing || remaining == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
         s"Cannot extract history lookup key (schema, remaining, classification): ${compact(render(document))}")
-    compact(render(JArray(List(schema, remaining, classification))))
+    val key = compact(render(List(schema, remaining, classification)))
+    logger.debug("Extracted history lookup key: {}", key)
+    key
   }
 
   private def extractLatestLookupKey(document: JValue): String = {
@@ -100,7 +107,9 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     if (schema == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
         s"Cannot extract latest lookup key (schema, classification): ${compact(render(document))}")
-    compact(render(("$schema" -> schema) ~ ("classification" -> classification)))
+    val key = compact(render(("$schema" -> schema) ~ ("classification" -> classification)))
+    logger.debug("Extracted latest lookup key: {}", key)
+    key
   }
 
   private def extractSchemaAndClassification(document: JValue): (String, String) = {

@@ -8,6 +8,7 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.spray._
+import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.JValue
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -30,7 +31,7 @@ trait DocumentDao {
 }
 
 class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
-  extends DocumentDao with Json4sJacksonSupport with JsonMethods {
+  extends DocumentDao with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
   implicit val system = ActorSystem("couchdb-system")
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
@@ -67,20 +68,20 @@ class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
 
   override def storeHistoryDocument(document: JValue): Future[Unit] =
     pipeline(Post(storeHistoryUri, document)).map {
-      case resp if resp.status == Created => ()
+      case resp if resp.status == Created => logger.debug("Stored history document")
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
   override def storeLatestDocument(document: JValue): Future[Unit] =
     pipeline(Post(storeLatestUri, document)).map {
-      case resp if resp.status == Created => ()
+      case resp if resp.status == Created => logger.info("Stored merged document")
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
   override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] =
     getDeleteJson(documents).flatMap { json =>
       pipeline(Post(deleteHistoryUri, json)).map {
-        case resp if resp.status == Created => ()
+        case resp if resp.status == Created => logger.debug("Deleted history documents: {}", documents)
         case resp => throw new UnsuccessfulResponseException(resp)
       }
     }
@@ -88,7 +89,7 @@ class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
   override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] =
     getDeleteJson(documents).flatMap { json =>
       pipeline(Post(deleteLatestUri, json)).map {
-        case resp if resp.status == Created => ()
+        case resp if resp.status == Created => logger.debug("Deleted latest documents: {}", documents)
         case resp => throw new UnsuccessfulResponseException(resp)
       }
     }
