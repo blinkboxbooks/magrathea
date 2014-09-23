@@ -1,15 +1,12 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import java.util.concurrent.Executors
-
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.{JNothing, JValue}
+import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.can.Http.ConnectionException
@@ -17,22 +14,22 @@ import spray.httpx.Json4sJacksonSupport
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.{ExecutionContext, Future, TimeoutException}
+import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
                     (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
-  implicit override val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
+  private val md = java.security.MessageDigest.getInstance("SHA-1")
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- parseDocument(event.body.asString())
     historyLookupKey = extractHistoryLookupKey(incomingDoc)
     historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
-    normalisedIncomingDoc = normaliseDocument(incomingDoc, historyLookupKeyMatches)
+    normalisedIncomingDoc = normaliseHistoryDocument(incomingDoc, historyLookupKeyMatches)
     _ <- normaliseDatabase(historyLookupKeyMatches)(documentDao.deleteHistoryDocuments)
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
@@ -51,6 +48,8 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
+  private def sha1(input: String): String = md.digest(input.getBytes("UTF-8")).map("%02x".format(_)).mkString
+
   private def mergeDocuments(documents: List[JValue]): JValue = {
     if (documents.isEmpty)
       throw new IllegalArgumentException("Expected to merge a non-empty history list")
@@ -62,6 +61,22 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
   private def parseDocument(json: String): Future[JValue] = Future {
     logger.info("Received document")
     parse(json)
+  }
+
+  private def normaliseHistoryDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue = {
+    val doc = normaliseDocument(document, lookupKeyMatches)
+    doc \ "contributors" match {
+      case JArray(arr) =>
+        val newArr: JValue = "contributors" -> arr.map { c =>
+          val name = c \ "names" \ "display"
+          if (name == JNothing)
+            throw new IllegalArgumentException(s"Cannot extract display name from contributor: ${compact(render(c))}")
+          val f: JValue = "ids" -> ("bbb" -> sha1(name.extract[String]))
+          c merge f
+        }
+        doc.removeDirectField("contributors") merge newArr
+      case _ => doc
+    }
   }
 
   private def normaliseDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue =

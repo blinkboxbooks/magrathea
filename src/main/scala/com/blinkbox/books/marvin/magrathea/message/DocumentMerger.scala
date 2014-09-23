@@ -1,6 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 import com.typesafe.scalalogging.slf4j.Logger
 import org.joda.time.DateTime
 import org.json4s.JsonAST.JObject
@@ -12,7 +13,6 @@ import shapeless.Typeable._
 
 import scala.collection.mutable
 import scala.language.implicitConversions
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
 
 /**
  * Merging algorithm rules:
@@ -25,9 +25,9 @@ object DocumentMerger {
   case class DocWithSrc[T](doc: T, src: JValue)
 
   implicit val json4sJacksonFormats = DefaultFormats
+  private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
   private val StaticKeys = Seq("source", "classification", "$schema")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
-  private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
 
   def merge(docA: JValue, docB: JValue): JValue = {
     if ((docA \ "classification") != (docB \ "classification"))
@@ -42,6 +42,7 @@ object DocumentMerger {
     res.doc merge res.src
   }
 
+  /** Removing any unnecessary fields that might cause problems with CouchDB */
   private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
 
   private def doMerge(valA: JValue, valB: JValue, srcA: JObject, srcB: JObject, srcAcc: JValue,
