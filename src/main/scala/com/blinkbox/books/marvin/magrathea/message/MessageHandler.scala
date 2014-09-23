@@ -28,15 +28,18 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- Future(parse(event.body.asString()))
-    lookupKey = extractLookupKey(incomingDoc)
-    lookupKeyMatches <- documentDao.lookupDocument(lookupKey)
-    normalisedIncomingDoc = normaliseDocument(incomingDoc, lookupKeyMatches)
-    _ <- normaliseDatabase(lookupKeyMatches)
+    historyLookupKey = extractHistoryLookupKey(incomingDoc)
+    historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
+    normalisedIncomingDoc = normaliseDocument(incomingDoc, historyLookupKeyMatches)
+    _ <- normaliseDatabase(historyLookupKeyMatches)
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
     history <- documentDao.fetchHistoryDocuments(schema, classification)
     mergedDoc = mergeDocuments(history)
-    _ <- documentDao.storeLatestDocument(mergedDoc)
+    latestLookupKey = extractLatestLookupKey(mergedDoc)
+    latestLookupKeyMatches <- documentDao.lookupLatestDocument(latestLookupKey)
+    normalisedMergedDoc = normaliseDocument(mergedDoc, latestLookupKeyMatches)
+    _ <- documentDao.storeLatestDocument(normalisedMergedDoc)
   } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -76,19 +79,28 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
           throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
         (id.extract[String], rev.extract[String])
       }
-      documentDao.deleteDocuments(deleteDocuments)
+      documentDao.deleteHistoryDocuments(deleteDocuments)
     } else Future.successful(())
   }
 
-  private def extractLookupKey(document: JValue): String = {
+  private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
     val remaining = (document \ "source" \ "$remaining")
       .removeDirectField("processedAt").removeDirectField("system")
     val classification = document \ "classification"
     if (schema == JNothing || remaining == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
-        s"Cannot extract lookup key (schema, remaining, classification): ${compact(render(document))}")
+        s"Cannot extract history lookup key (schema, remaining, classification): ${compact(render(document))}")
     compact(render(JArray(List(schema, remaining, classification))))
+  }
+
+  private def extractLatestLookupKey(document: JValue): String = {
+    val schema = document \ "$schema"
+    val classification = document \ "classification"
+    if (schema == JNothing || classification == JNothing)
+      throw new IllegalArgumentException(
+        s"Cannot extract latest lookup key (schema, classification): ${compact(render(document))}")
+    compact(render(("$schema" -> schema) ~ ("classification" -> classification)))
   }
 
   private def extractSchemaAndClassification(document: JValue): (String, String) = {

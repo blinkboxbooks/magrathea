@@ -42,18 +42,18 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   }
 
   it should "delete all lookupKeyMatches except the first" in new TestFixture {
-    doReturn(Future.successful(List(lookupKeyMatch(), lookupKeyMatch(), lookupKeyMatch()))).when(documentDao).lookupDocument(any[String])
+    doReturn(Future.successful(List(lookupKeyMatch(), lookupKeyMatch(), lookupKeyMatch()))).when(documentDao).lookupHistoryDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[List[(String, String)]])
-    verify(documentDao, times(1)).deleteDocuments(captor.capture())
+    verify(documentDao, times(1)).deleteHistoryDocuments(captor.capture())
     captor.getValue.size shouldEqual 2
   }
 
   it should "store and override the incoming document if there is at least one lookup match" in new TestFixture {
     val lookupKey = lookupKeyMatch()
-    doReturn(Future.successful(List(lookupKey))).when(documentDao).lookupDocument(any[String])
+    doReturn(Future.successful(List(lookupKey))).when(documentDao).lookupHistoryDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
@@ -64,12 +64,35 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   }
 
   it should "store and not override the incoming document if there are no lookup matches" in new TestFixture {
-    doReturn(Future.successful(List.empty)).when(documentDao).lookupDocument(any[String])
+    doReturn(Future.successful(List.empty)).when(documentDao).lookupHistoryDocument(any[String])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
     val captor = ArgumentCaptor.forClass(classOf[JValue])
     verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
+    captor.getValue \ "_id" shouldEqual JNothing
+    captor.getValue \ "_rev" shouldEqual JNothing
+  }
+
+  it should "store and override the merged document if there is at least one lookup match" in new TestFixture {
+    val lookupKey = lookupKeyMatch()
+    doReturn(Future.successful(List(lookupKey))).when(documentDao).lookupLatestDocument(any[String])
+    handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(documentDao, times(1)).storeLatestDocument(captor.capture())
+    captor.getValue \ "_id" shouldEqual lookupKey \ "value" \ "_id"
+    captor.getValue \ "_rev" shouldEqual lookupKey \ "value" \ "_rev"
+  }
+
+  it should "store and not override the merged document if there are no lookup matches" in new TestFixture {
+    doReturn(Future.successful(List.empty)).when(documentDao).lookupLatestDocument(any[String])
+    handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(documentDao, times(1)).storeLatestDocument(captor.capture())
     captor.getValue \ "_id" shouldEqual JNothing
     captor.getValue \ "_rev" shouldEqual JNothing
   }
@@ -94,11 +117,11 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     handler ! event
     checkFailure[IllegalArgumentException](event)
     expectMsgType[Status.Success]
-    verify(documentDao, times(0)).lookupDocument(any[String])
+    verify(documentDao, times(0)).lookupHistoryDocument(any[String])
   }
 
   it should "recover from a temporary connection failure" in new TestFixture {
-    when(documentDao.lookupDocument(any[String]))
+    when(documentDao.lookupHistoryDocument(any[String]))
       .thenReturn(Future.failed(new TimeoutException()))
       .thenReturn(Future.failed(new ConnectionException("oops")))
       .thenReturn(Future.successful(List.empty))
@@ -114,14 +137,15 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val documentDao = mock[DocumentDao]
 
     private val lookupDocument = List.empty
-    doReturn(Future.successful(lookupDocument)).when(documentDao).lookupDocument(any[String])
+    doReturn(Future.successful(lookupDocument)).when(documentDao).lookupHistoryDocument(any[String])
+    doReturn(Future.successful(lookupDocument)).when(documentDao).lookupLatestDocument(any[String])
 
     private val fetchHistoryDocuments = List(sampleBook(), sampleBook(), sampleBook())
     doReturn(Future.successful(fetchHistoryDocuments)).when(documentDao).fetchHistoryDocuments(any[String], any[String])
 
     doReturn(Future.successful(())).when(documentDao).storeLatestDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).storeHistoryDocument(any[JValue])
-    doReturn(Future.successful(())).when(documentDao).deleteDocuments(any[List[(String, String)]])
+    doReturn(Future.successful(())).when(documentDao).deleteHistoryDocuments(any[List[(String, String)]])
 
     val handler: ActorRef = TestActorRef(Props(new MessageHandler(documentDao, errorHandler, retryInterval)(testMerge)))
 
@@ -154,7 +178,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     def checkNoFailures() = {
       // Check that everything was called at least once.
-      verify(documentDao, atLeastOnce()).lookupDocument(any[String])
+      verify(documentDao, atLeastOnce()).lookupHistoryDocument(any[String])
       verify(documentDao, atLeastOnce()).storeHistoryDocument(any[JValue])
       verify(documentDao, atLeastOnce()).fetchHistoryDocuments(any[String], any[String])
       verify(documentDao, atLeastOnce()).storeLatestDocument(any[JValue])
