@@ -2,6 +2,7 @@ package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.marvin.magrathea.message.DocumentMerger.MergeStrategy.MergeStrategy
 import com.typesafe.scalalogging.slf4j.Logger
 import org.joda.time.DateTime
 import org.json4s.JsonAST.JObject
@@ -9,7 +10,6 @@ import org.json4s.JsonDSL._
 import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.slf4j.LoggerFactory
-import shapeless.Typeable._
 
 import scala.collection.mutable
 import scala.language.implicitConversions
@@ -19,111 +19,130 @@ import scala.language.implicitConversions
  * http://jira.blinkbox.local/confluence/display/QUILL/Merging+rules
  */
 object DocumentMerger {
-  case class DifferentClassificationException(cA: JValue, cB: JValue) extends RuntimeException(
-    s"Cannot merge documents with different classifications:\n- ${compact(render(cA))}\n- ${compact(render(cB))}")
+  object MergeStrategy extends Enumeration {
+    type MergeStrategy = Value
+    val Merge, Replace, Keep = Value
+  }
 
-  case class DocWithSrc[T](doc: T, src: JValue)
+  case class DifferentSchemaException(dA: JValue, dB: JValue) extends RuntimeException(
+    s"Cannot merge documents with different schemas:\n- ${compact(render(dA))}\n- ${compact(render(dB))}")
+
+  case class DifferentClassificationException(dA: JValue, dB: JValue) extends RuntimeException(
+    s"Cannot merge documents with different classifications:\n- ${compact(render(dA))}\n- ${compact(render(dB))}")
+  
+  case class MissingSourceException(d: JValue) extends RuntimeException(
+    s"Cannot merge document without 'source' field: ${compact(render(d))}")
+
+  case class IncorrectDocumentType(d: JValue) extends RuntimeException(
+    s"The document has to be a JObject containing fields: ${compact(render(d))}")
+
+  case class NotClassifiedException(d: JValue) extends RuntimeException(
+    s"Cannot merge a non-classified array: ${compact(render(d))}")
 
   implicit val json4sJacksonFormats = DefaultFormats
   private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
-  private val StaticKeys = Seq("source", "classification", "$schema")
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
 
   def merge(docA: JValue, docB: JValue): JValue = {
-    if ((docA \ "classification") != (docB \ "classification"))
-      throw DifferentClassificationException(docA \ "classification", docB \ "classification")
+    val schema: JValue = "$schema" -> (
+      if ((docA \ "$schema") == (docB \ "$schema")) docA \ "$schema"
+      else throw DifferentSchemaException(docA \ "$schema", docB \ "$schema"))
 
-    val srcA = (docA \ "source").cast[JObject].getOrElse(throw new IllegalArgumentException(
-      s"Cannot find document source in ${compact(render(docA))}"))
-    val srcB = (docB \ "source").cast[JObject].getOrElse(throw new IllegalArgumentException(
-      s"Cannot find document source in ${compact(render(docB))}"))
+    val classification: JValue = "classification" -> (
+      if ((docA \ "classification") == (docB \ "classification")) docA \ "classification"
+      else throw DifferentClassificationException(docA \ "classification", docB \ "classification"))
 
-    val res = doMerge(purify(docA), purify(docB), srcA, srcB, JNothing)
-    res.doc merge res.src
+    val dA = annotate(purify(docA))
+    val dB = annotate(purify(docB))
+    val src = (dA \ "source") merge (dB \ "source")
+    schema merge classification merge doMerge(dA, dB, src)
   }
 
-  /** Removing any unnecessary fields that might cause problems with CouchDB */
+  /** Strip the keys that are irrelevant to the merge process. */
   private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
+    .removeDirectField("$schema").removeDirectField("classification")
 
-  private def doMerge(valA: JValue, valB: JValue, srcA: JObject, srcB: JObject, srcAcc: JValue,
-                      key: Option[String] = None): DocWithSrc[JValue] = (valA, valB) match {
-    case (JObject(xs), JObject(ys)) =>
-      val mergeRes = mergeFields(xs, ys, srcA, srcB, srcAcc, key)
-      DocWithSrc(JObject(mergeRes.doc), mergeRes.src)
-    case (JArray(xs), JArray(ys)) =>
-      val mergeRes = mergeArrays(xs, ys, srcA, srcB, srcAcc, key)
-      DocWithSrc(JArray(mergeRes.doc), mergeRes.src)
-    case (JNothing, y) => DocWithSrc(y, srcAcc)
-    case (x, JNothing) => DocWithSrc(x, srcAcc)
-    case (x, y) => DocWithSrc(y, srcAcc)
+  /** Change the document so that every field has a reference to its source. */
+  private def annotate(doc: JValue): JValue = {
+    val oldSrc = (doc \ "source").toOption.getOrElse(throw MissingSourceException(doc))
+    val srcHash = oldSrc.sha1
+    val newSrc: JValue = srcHash -> oldSrc
+    var annotated = false
+    def doAnnotate(doc: JValue): JValue = doc match {
+      case JObject(xs) => JObject(annotateFields(xs))
+      case JArray(xs) => if (isClassified(xs)) JArray(annotateArrays(xs)) else annotateValue(xs)
+      case x =>
+        annotated = true
+        annotateValue(x)
+    }
+    def annotateFields(vs: List[JField]): List[JField] = vs match {
+      case Nil => Nil
+      case (xn, xv) :: xs => JField(xn, if (isAnnotated(xv)) xv else doAnnotate(xv)) :: annotateFields(xs)
+    }
+    def annotateArrays(vs: List[JValue]): List[JValue] = vs match {
+      case Nil => Nil
+      case x :: xs => (if (isAnnotated(x)) x else annotateValue(x)) :: annotateArrays(xs)
+    }
+    def annotateValue(v: JValue): JValue = ("value" -> v) ~ ("source" -> srcHash)
+    def isAnnotated(f: JValue): Boolean = (f \ "value" != JNothing) && (f \ "source" != JNothing)
+    def isClassified(arr: List[JValue]): Boolean = (arr.size > 0) && arr.forall(_ \ "classification" != JNothing)
+    doAnnotate(doc.removeDirectField("source")).replaceDirectField("source", if (annotated) newSrc else oldSrc)
   }
 
-  private def mergeFields(vsA: List[JField], vsB: List[JField], srcA: JObject, srcB: JObject, srcAcc: JValue,
-                          key: Option[String]): DocWithSrc[List[JField]] = {
-    def mergeRec(xleft: List[JField], yleft: List[JField], srcAcc: JValue): DocWithSrc[List[JField]] = xleft match {
-      case Nil =>
-        val src = yleft.foldLeft(srcAcc)((acc, cur) => acc merge getKeySourceField(cur._1, srcB))
-        DocWithSrc(yleft, src)
+  private def doMerge(valA: JValue, valB: JValue, src: JValue): JValue = (valA, valB) match {
+    case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))
+    case (JArray(xs), JArray(ys)) => JArray(mergeArrays(xs, ys, src))
+    case (JNothing, y) => y
+    case (x, JNothing) => x
+    case (_, y) => y
+  }
+
+  private def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
+    def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
+      case Nil => yleft.map { case (key, value) =>
+        logger.debug("Adding '{}'", key)
+        key -> getFieldWithSource(value, src)
+      }
       case (xn, xv) :: xs => yleft find (_._1 == xn) match {
         case Some(y @ (yn, yv)) =>
-          if (StaticKeys.contains(xn)) {
-            val mergeRecRes = mergeRec(xs, yleft filterNot (_ == y), srcAcc)
-            DocWithSrc(JField(xn, xv) :: mergeRecRes.doc, mergeRecRes.src)
-          } else mergeOrReplaceA(xn, xv, yv, srcA, srcB) match {
-            case Some(true) =>
-              logger.debug(s"Merging '$xn'")
-              val mergeRes = doMerge(xv, yv, srcA, srcB, srcAcc, Some(xn))
-              val mergeRecRes = mergeRec(xs, yleft filterNot (_ == y), srcAcc)
-              DocWithSrc(JField(xn, mergeRes.doc) :: mergeRecRes.doc, mergeRes.src merge mergeRecRes.src)
-            case Some(false) =>
-              val src = getKeySourceField(xn, srcB)
-              logger.debug(s"Replacing '$xn' (src: '${compact(render(src))})")
-              val mergeRecRes = mergeRec(xs, yleft filterNot (_ == y), srcAcc)
-              DocWithSrc(JField(xn, yv) :: mergeRecRes.doc, mergeRecRes.src merge src)
-            case None =>
-              logger.debug(s"Keeping '$xn' unchanged")
-              val mergeRecRes = mergeRec(xs, yleft filterNot (_ == y), srcAcc)
-              DocWithSrc(JField(xn, xv) :: mergeRecRes.doc, mergeRecRes.src)
+          mergeStrategyForA(xv, yv, src) match {
+            case MergeStrategy.Merge =>
+              logger.debug("Merging '{}'", xn)
+              JField(xn, doMerge(xv, yv, src)) :: mergeRec(xs, yleft filterNot (_ == y))
+            case MergeStrategy.Replace =>
+              logger.debug("Replacing '{}'", xn)
+              JField(xn, getFieldWithSource(yv, src)) :: mergeRec(xs, yleft filterNot (_ == y))
+            case MergeStrategy.Keep =>
+              logger.debug("Keeping '{}' unchanged", xn)
+              JField(xn, xv) :: mergeRec(xs, yleft filterNot (_ == y))
           }
-        case None =>
-          val mergeRecRes = mergeRec(xs, yleft, srcAcc)
-          DocWithSrc(JField(xn, xv) :: mergeRecRes.doc, mergeRecRes.src)
+        case None => JField(xn, xv) :: mergeRec(xs, yleft)
       }
     }
-    mergeRec(vsA, vsB, srcAcc)
+    mergeRec(vsA, vsB)
   }
 
-  private def mergeArrays(vsA: List[JValue], vsB: List[JValue], srcA: JObject, srcB: JObject, srcAcc: JValue,
-                          key: Option[String]): DocWithSrc[List[JValue]] = {
-    def mergeRec(xleft: List[JValue], yleft: List[JValue], srcAcc: JValue): DocWithSrc[List[JValue]] = xleft match {
-      case Nil =>
-        val src = key.map(k => getSourceField(k, srcB)).getOrElse(JNothing)
-        DocWithSrc(yleft.map(_ merge src), srcAcc)
+  private def mergeArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
+    def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
+      case Nil => yleft.map { v =>
+        logger.debug("Adding '{}'", v)
+        getFieldWithSource(v, src)
+      }
       case x :: xs => yleft find (_ \ "classification" == x \ "classification") match {
         case Some(y) =>
-          val mergeRes = doMerge(x, y, srcA, srcB, srcAcc)
-          val mergeRecRes = mergeRec(xs, yleft filterNot (_ == y), srcAcc)
-          DocWithSrc((mergeRes.doc merge mergeRes.src) :: mergeRecRes.doc, mergeRecRes.src)
-        case None =>
-          val mergeRecRes = mergeRec(xs, yleft, srcAcc)
-          DocWithSrc(x :: mergeRecRes.doc, mergeRecRes.src)
+          logger.debug("")
+          doMerge(x, y, src) :: mergeRec(xs, yleft filterNot (_ == y))
+        case None => x :: mergeRec(xs, yleft)
       }
     }
-    def replaceArray(xA: List[JValue], xB: List[JValue]): DocWithSrc[List[JValue]] = key match {
-      case Some(k) =>
-        logger.debug(s"Replacing array '$k'")
-        if (canReplaceA(k, xA, xB, srcA, srcB)) DocWithSrc(xB, srcAcc merge getKeySourceField(k, srcB))
-        else DocWithSrc(xA, srcAcc)
-      case None =>
-        logger.debug("Undefined behaviour: keeping the current array")
-        DocWithSrc(xA, srcAcc)
-    }
-    // we only merge classified arrays, otherwise we replace and keep the newest
+    // we only merge classified arrays, otherwise we throw an exception
     (prepareClassifiedArray(vsA), prepareClassifiedArray(vsB)) match {
       case (Some(cA), Some(cB)) =>
-        logger.debug(s"Merging classified array '${key.getOrElse("N/A")}'")
-        mergeRec(cA, cB, srcAcc)
-      case _ => replaceArray(vsA, vsB)
+        logger.debug("Merging classified arrays")
+        mergeRec(cA, cB)
+      case (None, Some(_)) => throw NotClassifiedException(vsA)
+      case (Some(_), None) => throw NotClassifiedException(vsB)
+      case _ => throw NotClassifiedException(vsA)
     }
   }
 
@@ -141,38 +160,30 @@ object DocumentMerger {
     } else None
   }
 
-  /** There can be three cases: merge, replace or nothing. Merge has priority over replace. Returns true for merge.  */
-  private def mergeOrReplaceA(key: String, vA: JValue, vB: JValue, srcA: JObject, srcB: JObject): Option[Boolean] = {
+  /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
+  private def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
     val canMergeA = vA.isInstanceOf[JObject] || vA.isInstanceOf[JArray]
     val canMergeB = vB.isInstanceOf[JObject] || vB.isInstanceOf[JArray]
     val canMerge = canMergeA && canMergeB
-    if (canMerge) Some(true)
-    else if (canReplaceA(key, vA, vB, srcA, srcB)) Some(false)
-    else None
+    if (canMerge) MergeStrategy.Merge
+    else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
+    else MergeStrategy.Keep
   }
 
   /** Returns whether key in document A can be replaced with key in document B. */
-  private def canReplaceA(key: String, vA: JValue, vB: JValue, srcA: JObject, srcB: JObject): Boolean = {
-    val keySourceA = getKeySource(key, srcA)
-    val keySourceB = getKeySource(key, srcB)
-    val deliveredA = (keySourceA \ "deliveredAt").extract[DateTime]
-    val deliveredB = (keySourceB \ "deliveredAt").extract[DateTime]
-    val roleA = (keySourceA \ "role").extract[String]
-    val roleB = (keySourceB \ "role").extract[String]
+  private def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
+    val srcA = src \ (vA \ "source").extract[String]
+    val srcB = src \ (vB \ "source").extract[String]
+    val deliveredA = (srcA \ "deliveredAt").extract[DateTime]
+    val deliveredB = (srcB \ "deliveredAt").extract[DateTime]
+    val roleA = (srcA \ "role").extract[String]
+    val roleB = (srcB \ "role").extract[String]
     val bIsNewerThanA = deliveredB.isAfter(deliveredA)
     val bIsAuthorisedToReplaceA = AuthorityRoles.indexOf(roleB) >= AuthorityRoles.indexOf(roleA)
     val bRoleBias = AuthorityRoles.indexOf(roleB) - AuthorityRoles.indexOf(roleA)
     (bIsNewerThanA && bIsAuthorisedToReplaceA) || bRoleBias > 0
   }
 
-  /** Returns the source of a given field or the document source if the field does not have a different one. */
-  private def getKeySource(key: String, src: JValue): JValue =
-    ((src \ key).toOption orElse (src \ "$remaining").toOption).getOrElse(
-      throw new IllegalArgumentException(s"Cannot find source for '$key': ${compact(render(src))}"))
-
-  /** Returns a json source field of the given key, ready to be merged with the rest of the source. */
-  private def getKeySourceField(key: String, src: JValue): JValue = "source" -> (key -> getKeySource(key, src))
-
   /** Returns a json source field of the given key, ready to be merged with an element */
-  private def getSourceField(key: String, src: JValue): JValue = "source" -> ("$remaining" -> getKeySource(key, src))
+  private def getFieldWithSource(value: JValue, src: JValue): JObject = ("value" -> value) ~ ("source" -> src)
 }
