@@ -117,72 +117,74 @@ object DocumentMerger {
     else result.replaceDirectField("source", oldSrc)
   }
 
-  private def doMerge(valA: JValue, valB: JValue, src: JValue): JValue = {
-    def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
-      def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
-        case Nil => yleft
-        case (xn, xv) :: xs => yleft find (_._1 == xn) match {
-          case Some(y @ (yn, yv)) => mergeStrategyForA(xv, yv, src) match {
-            case MergeStrategy.Merge =>
-              logger.debug("Merging field '{}'", xn)
-              JField(xn, doMerge(xv, yv, src)) :: mergeRec(xs, yleft filterNot (_ == y))
-            case MergeStrategy.Replace =>
-              logger.debug("Replacing field '{}'", xn)
-              JField(xn, yv) :: mergeRec(xs, yleft filterNot (_ == y))
-            case MergeStrategy.Keep =>
-              logger.debug("Keeping field '{}'", xn)
-              JField(xn, xv) :: mergeRec(xs, yleft filterNot (_ == y))
+  private def doMerge(valA: JValue, valB: JValue, src: JValue): JValue = (valA, valB) match {
+    case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))
+    case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
+    case (JNothing, y) => y
+    case (x, JNothing) => x
+    case (_, y) => y
+  }
+
+  def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
+    def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
+      case Nil => yleft
+      case (xn, xv) :: xs => yleft find (_._1 == xn) match {
+        case Some(y @ (yn, yv)) => mergeStrategyForA(xv, yv, src) match {
+          case MergeStrategy.Merge =>
+            logger.debug("Merging field '{}'", xn)
+            JField(xn, doMerge(xv, yv, src)) :: mergeRec(xs, yleft filterNot (_ == y))
+          case MergeStrategy.Replace =>
+            logger.debug("Replacing field '{}'", xn)
+            JField(xn, yv) :: mergeRec(xs, yleft filterNot (_ == y))
+          case MergeStrategy.Keep =>
+            logger.debug("Keeping field '{}'", xn)
+            JField(xn, xv) :: mergeRec(xs, yleft filterNot (_ == y))
+        }
+        case None => JField(xn, xv) :: mergeRec(xs, yleft)
+      }
+    }
+    logger.debug("Merging fields...")
+    mergeRec(vsA, vsB)
+  }
+
+  def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
+    def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
+      case Nil => yleft
+      case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {
+        case Some(y) =>
+          if (canReplaceA(x, y, src)) {
+            logger.debug("Replacing classification '{}'", compact(x \ "value" \ "classification"))
+            y :: mergeRec(xs, yleft filterNot (_ == y))
+          } else {
+            logger.debug("Keeping classification '{}'", compact(x \ "value" \ "classification"))
+            x :: mergeRec(xs, yleft filterNot (_ == y))
           }
-          case None => JField(xn, xv) :: mergeRec(xs, yleft)
-        }
+        case None => x :: mergeRec(xs, yleft)
       }
-      logger.debug("Merging fields...")
-      mergeRec(vsA, vsB)
     }
-    def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
-      def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
-        case Nil => yleft
-        case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {
-          case Some(y) =>
-            if (canReplaceA(x, y, src)) {
-              logger.debug("Replacing classification '{}'", compact(x \ "value" \ "classification"))
-              y :: mergeRec(xs, yleft filterNot (_ == y))
-            } else {
-              logger.debug("Keeping classification '{}'", compact(x \ "value" \ "classification"))
-              x :: mergeRec(xs, yleft filterNot (_ == y))
-            }
-          case None => x :: mergeRec(xs, yleft)
-        }
-      }
-      logger.debug("Merging classified arrays...")
-      mergeRec(vsA, vsB)
-    }
-    /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
-    def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
-      val canMerge = !isAnnotated(vA) && !isAnnotated(vB)
-      if (canMerge) MergeStrategy.Merge
-      else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
-      else MergeStrategy.Keep
-    }
-    /** Returns whether key in document A can be replaced with key in document B. */
-    def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
-      val srcA = src \ (vA \ "source").extract[String]
-      val srcB = src \ (vB \ "source").extract[String]
-      val deliveredA = (srcA \ "deliveredAt").extract[DateTime]
-      val deliveredB = (srcB \ "deliveredAt").extract[DateTime]
-      val roleA = (srcA \ "role").extract[String]
-      val roleB = (srcB \ "role").extract[String]
-      val bIsNewerThanA = deliveredB.isAfter(deliveredA)
-      val bIsAuthorisedToReplaceA = AuthorityRoles.indexOf(roleB) >= AuthorityRoles.indexOf(roleA)
-      val bRoleBias = AuthorityRoles.indexOf(roleB) - AuthorityRoles.indexOf(roleA)
-      (bIsNewerThanA && bIsAuthorisedToReplaceA) || bRoleBias > 0
-    }
-    (valA, valB) match {
-      case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))
-      case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
-      case (JNothing, y) => y
-      case (x, JNothing) => x
-      case (_, y) => y
-    }
+    logger.debug("Merging classified arrays...")
+    mergeRec(vsA, vsB)
+  }
+
+  /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
+  def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
+    val canMerge = !isAnnotated(vA) && !isAnnotated(vB)
+    if (canMerge) MergeStrategy.Merge
+    else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
+    else MergeStrategy.Keep
+  }
+
+  /** Returns whether key in document A can be replaced with key in document B. */
+  def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
+    val srcA = src \ (vA \ "source").extract[String]
+    val srcB = src \ (vB \ "source").extract[String]
+    val deliveredA = (srcA \ "deliveredAt").extract[DateTime]
+    val deliveredB = (srcB \ "deliveredAt").extract[DateTime]
+    val roleA = (srcA \ "role").extract[String]
+    val roleB = (srcB \ "role").extract[String]
+    val bIsNewerThanA = deliveredB.isAfter(deliveredA)
+    val bIsAuthorisedToReplaceA = AuthorityRoles.indexOf(roleB) >= AuthorityRoles.indexOf(roleA)
+    val bRoleBias = AuthorityRoles.indexOf(roleB) - AuthorityRoles.indexOf(roleA)
+    (bIsNewerThanA && bIsAuthorisedToReplaceA) || bRoleBias > 0
   }
 }
