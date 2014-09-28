@@ -1,6 +1,5 @@
 package com.blinkbox.books.marvin.magrathea
 
-import org.json4s.JsonAST.JObject
 import org.json4s.JsonDSL._
 import org.json4s._
 import org.json4s.jackson.JsonMethods
@@ -15,11 +14,6 @@ object Json4sExtensions {
     def replaceDirectField(key: String, value: JValue) = {
       val newKey: JValue = key -> value
       removeDirectField(key).merge(newKey)
-    }
-    def withoutClassification: JValue = removeDirectField("classification")
-    def withFields: Option[List[JField]] = v match {
-      case JObject(fields) => Some(fields)
-      case _ => None
     }
     lazy val sha1 = md.digest(compact(v).getBytes("UTF-8")).map("%02x".format(_)).mkString
   }
