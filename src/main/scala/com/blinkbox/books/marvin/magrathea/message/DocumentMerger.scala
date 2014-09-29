@@ -60,13 +60,13 @@ object DocumentMerger {
     .removeDirectField("$schema").removeDirectField("classification")
 
   /** Returns the merged document along with the unique sources used. */
-  private def docWithUniqueSource(doc: JValue, source: JValue): JValue = {
-    val srcField: JValue = "source" -> (source match {
+  private def docWithUniqueSource(doc: JValue, src: JValue): JValue = {
+    val srcField: JValue = "source" -> (src match {
       case JObject(l) => JObject(l.filter { case (key, _) => doc \\ "source" match {
         case JObject(sources) => sources.exists(_._2 == JString(key))
         case x => x == JString(key)
       }})
-      case _ => source
+      case _ => src
     })
     doc merge srcField
   }

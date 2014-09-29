@@ -105,13 +105,13 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
-    val remaining = (document \ "source" \ "$remaining")
+    val source = (document \ "source")
       .removeDirectField("processedAt").removeDirectField("system")
     val classification = document \ "classification"
-    if (schema == JNothing || remaining == JNothing || classification == JNothing)
+    if (schema == JNothing || source == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
-        s"Cannot extract history lookup key (schema, remaining, classification): ${compact(render(document))}")
-    val key = compact(render(List(schema, remaining, classification)))
+        s"Cannot extract history lookup key (schema, source, classification): ${compact(render(document))}")
+    val key = compact(render(List(schema, source, classification)))
     logger.debug("Extracted history lookup key: {}", key)
     key
   }
