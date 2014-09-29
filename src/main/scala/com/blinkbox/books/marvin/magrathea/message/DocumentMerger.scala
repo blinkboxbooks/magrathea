@@ -125,7 +125,7 @@ object DocumentMerger {
     case (_, y) => y
   }
 
-  def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
+  private def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
     def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
       case Nil => yleft
       case (xn, xv) :: xs => yleft find (_._1 == xn) match {
@@ -147,7 +147,7 @@ object DocumentMerger {
     mergeRec(vsA, vsB)
   }
 
-  def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
+  private def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
     def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
       case Nil => yleft
       case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {
@@ -167,7 +167,7 @@ object DocumentMerger {
   }
 
   /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
-  def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
+  private def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
     val canMerge = !isAnnotated(vA) && !isAnnotated(vB)
     if (canMerge) MergeStrategy.Merge
     else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
@@ -175,7 +175,7 @@ object DocumentMerger {
   }
 
   /** Returns whether key in document A can be replaced with key in document B. */
-  def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
+  private def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
     val srcA = src \ (vA \ "source").extract[String]
     val srcB = src \ (vB \ "source").extract[String]
     val deliveredA = (srcA \ "deliveredAt").extract[DateTime]
