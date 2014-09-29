@@ -23,7 +23,7 @@ object DocumentMerger {
     val Merge, Replace, Keep = Value
   }
 
-  case class Source(src: JValue) {
+  case class Sources(src: JValue) {
     /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
     def mergeStrategyForX(x: JValue, y: JValue): MergeStrategy = {
       val canMerge = !DocumentAnnotator.isAnnotated(x) && !DocumentAnnotator.isAnnotated(y)
@@ -80,7 +80,7 @@ object DocumentMerger {
 
     val annotatedA = DocumentAnnotator.annotate(purify(docA))
     val annotatedB = DocumentAnnotator.annotate(purify(docB))
-    val src = Source((annotatedA \ "source") merge (annotatedB \ "source"))
+    val src = Sources((annotatedA \ "source") merge (annotatedB \ "source"))
     logger.debug("Starting document merging...")
     val result = doMerge(annotatedA.removeDirectField("source"), annotatedB.removeDirectField("source"), src)
     logger.debug("Finished document merging")
@@ -91,14 +91,15 @@ object DocumentMerger {
   private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
     .removeDirectField("$schema").removeDirectField("classification")
 
-  private def doMerge(valA: JValue, valB: JValue, src: Source): JValue = (valA, valB) match {
+  private def doMerge(valA: JValue, valB: JValue, src: Sources): JValue = (valA, valB) match {
     case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))
     case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
     case (JNothing, y) => y
     case (x, JNothing) => x
+    case (x, y) => throw new IllegalArgumentException(s"Unexpected values found:\n- ${compact(x)}\n- ${compact(y)}")
   }
 
-  private def mergeFields(vsA: List[JField], vsB: List[JField], src: Source): List[JField] = {
+  private def mergeFields(vsA: List[JField], vsB: List[JField], src: Sources): List[JField] = {
     def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
       case Nil => yleft
       case (xn, xv) :: xs => yleft find (_._1 == xn) match {
@@ -120,7 +121,7 @@ object DocumentMerger {
     mergeRec(vsA, vsB)
   }
 
-  private def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: Source): List[JValue] = {
+  private def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: Sources): List[JValue] = {
     def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
       case Nil => yleft
       case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {

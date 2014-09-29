@@ -82,7 +82,7 @@ class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with 
       ("cArray" -> List(cItemA, cItemB)) ~
       ("array" -> List("aItem" -> "a", "bItem" -> "b"))
     )
-    val res = DocumentAnnotator.annotate(DocumentAnnotator.annotate(doc))
+    val res = DocumentAnnotator.annotate(doc)
     res \ "fieldA" \ "value" shouldEqual JString("Value A")
     res \ "fieldA" \ "source" shouldEqual JString((doc \ "source").sha1)
     res \ "fieldB" \ "value" shouldEqual JString("Value B")
@@ -98,5 +98,6 @@ class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with 
     (res \ "cArray").children should contain (("value" -> cItemB) ~ ("source" -> (doc \ "source").sha1))
     (res \ "array" \ "value").children shouldEqual List[JValue]("aItem" -> "a", "bItem" -> "b")
     res \ "array" \ "source" shouldEqual JString((doc \ "source").sha1)
+    DocumentAnnotator.annotate(res) shouldEqual res
   }
 }
