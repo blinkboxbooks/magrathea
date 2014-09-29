@@ -23,6 +23,42 @@ object DocumentMerger {
     val Merge, Replace, Keep = Value
   }
 
+  case class Source(src: JValue) {
+    /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
+    def mergeStrategyForX(x: JValue, y: JValue): MergeStrategy = {
+      val canMerge = !DocumentAnnotator.isAnnotated(x) && !DocumentAnnotator.isAnnotated(y)
+      if (canMerge) MergeStrategy.Merge
+      else if (canReplaceX(x, y)) MergeStrategy.Replace
+      else MergeStrategy.Keep
+    }
+
+    /** Returns whether key in document X can be replaced with key in document Y. */
+    def canReplaceX(x: JValue, y: JValue): Boolean = {
+      val srcX = src \ (x \ "source").extract[String]
+      val srcY = src \ (y \ "source").extract[String]
+      val deliveredX = (srcX \ "deliveredAt").extract[DateTime]
+      val deliveredY = (srcY \ "deliveredAt").extract[DateTime]
+      val roleX = (srcX \ "role").extract[String]
+      val roleY = (srcY \ "role").extract[String]
+      val yIsNewerThanX = deliveredY.isAfter(deliveredX)
+      val yIsAuthorisedToReplaceX = AuthorityRoles.indexOf(roleY) >= AuthorityRoles.indexOf(roleX)
+      val yRoleBias = AuthorityRoles.indexOf(roleY) - AuthorityRoles.indexOf(roleX)
+      (yIsNewerThanX && yIsAuthorisedToReplaceX) || yRoleBias > 0
+    }
+
+    /** Returns the merged document along with the unique sources used. */
+    def withDoc(doc: JValue): JValue = {
+      val srcField: JValue = "source" -> (src match {
+        case JObject(l) => JObject(l.filter { case (key, _) => doc \\ "source" match {
+          case JObject(sources) => sources.exists(_._2 == JString(key))
+          case x => x == JString(key)
+        }})
+        case _ => src
+      })
+      doc merge srcField
+    }
+  }
+
   case class DifferentSchemaException(dA: JValue, dB: JValue) extends RuntimeException(
     s"Cannot merge documents with different schemas:\n- ${compact(dA)}\n- ${compact(dB)}")
 
@@ -44,30 +80,18 @@ object DocumentMerger {
 
     val annotatedA = DocumentAnnotator.annotate(purify(docA))
     val annotatedB = DocumentAnnotator.annotate(purify(docB))
-    val source = (annotatedA \ "source") merge (annotatedB \ "source")
+    val src = Source((annotatedA \ "source") merge (annotatedB \ "source"))
     logger.debug("Starting document merging...")
-    val result = doMerge(annotatedA.removeDirectField("source"), annotatedB.removeDirectField("source"), source)
+    val result = doMerge(annotatedA.removeDirectField("source"), annotatedB.removeDirectField("source"), src)
     logger.debug("Finished document merging")
-    schema merge classification merge docWithUniqueSource(result, source)
+    schema merge classification merge src.withDoc(result)
   }
 
   /** Strip the keys that are irrelevant to the merge process. */
   private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
     .removeDirectField("$schema").removeDirectField("classification")
 
-  /** Returns the merged document along with the unique sources used. */
-  private def docWithUniqueSource(doc: JValue, src: JValue): JValue = {
-    val srcField: JValue = "source" -> (src match {
-      case JObject(l) => JObject(l.filter { case (key, _) => doc \\ "source" match {
-        case JObject(sources) => sources.exists(_._2 == JString(key))
-        case x => x == JString(key)
-      }})
-      case _ => src
-    })
-    doc merge srcField
-  }
-
-  private def doMerge(valA: JValue, valB: JValue, src: JValue): JValue = (valA, valB) match {
+  private def doMerge(valA: JValue, valB: JValue, src: Source): JValue = (valA, valB) match {
     case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))
     case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
     case (JNothing, y) => y
@@ -75,11 +99,11 @@ object DocumentMerger {
     case (_, y) => y
   }
 
-  private def mergeFields(vsA: List[JField], vsB: List[JField], src: JValue): List[JField] = {
+  private def mergeFields(vsA: List[JField], vsB: List[JField], src: Source): List[JField] = {
     def mergeRec(xleft: List[JField], yleft: List[JField]): List[JField] = xleft match {
       case Nil => yleft
       case (xn, xv) :: xs => yleft find (_._1 == xn) match {
-        case Some(y @ (yn, yv)) => mergeStrategyForA(xv, yv, src) match {
+        case Some(y @ (yn, yv)) => src.mergeStrategyForX(xv, yv) match {
           case MergeStrategy.Merge =>
             logger.debug("Merging field '{}'", xn)
             JField(xn, doMerge(xv, yv, src)) :: mergeRec(xs, yleft filterNot (_ == y))
@@ -97,12 +121,12 @@ object DocumentMerger {
     mergeRec(vsA, vsB)
   }
 
-  private def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: JValue): List[JValue] = {
+  private def mergeClassifiedArrays(vsA: List[JValue], vsB: List[JValue], src: Source): List[JValue] = {
     def mergeRec(xleft: List[JValue], yleft: List[JValue]): List[JValue] = xleft match {
       case Nil => yleft
       case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {
         case Some(y) =>
-          if (canReplaceA(x, y, src)) {
+          if (src.canReplaceX(x, y)) {
             logger.debug("Replacing classification '{}'", compact(x \ "value" \ "classification"))
             y :: mergeRec(xs, yleft filterNot (_ == y))
           } else {
@@ -114,27 +138,5 @@ object DocumentMerger {
     }
     logger.debug("Merging classified arrays...")
     mergeRec(vsA, vsB)
-  }
-
-  /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
-  private def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
-    val canMerge = !DocumentAnnotator.isAnnotated(vA) && !DocumentAnnotator.isAnnotated(vB)
-    if (canMerge) MergeStrategy.Merge
-    else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
-    else MergeStrategy.Keep
-  }
-
-  /** Returns whether key in document A can be replaced with key in document B. */
-  private def canReplaceA(vA: JValue, vB: JValue, src: JValue): Boolean = {
-    val srcA = src \ (vA \ "source").extract[String]
-    val srcB = src \ (vB \ "source").extract[String]
-    val deliveredA = (srcA \ "deliveredAt").extract[DateTime]
-    val deliveredB = (srcB \ "deliveredAt").extract[DateTime]
-    val roleA = (srcA \ "role").extract[String]
-    val roleB = (srcB \ "role").extract[String]
-    val bIsNewerThanA = deliveredB.isAfter(deliveredA)
-    val bIsAuthorisedToReplaceA = AuthorityRoles.indexOf(roleB) >= AuthorityRoles.indexOf(roleA)
-    val bRoleBias = AuthorityRoles.indexOf(roleB) - AuthorityRoles.indexOf(roleA)
-    (bIsNewerThanA && bIsAuthorisedToReplaceA) || bRoleBias > 0
   }
 }
