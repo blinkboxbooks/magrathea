@@ -11,7 +11,6 @@ import org.json4s._
 import org.json4s.jackson.JsonMethods._
 import org.slf4j.LoggerFactory
 
-import scala.collection.mutable
 import scala.language.implicitConversions
 
 /**
@@ -30,9 +29,6 @@ object DocumentMerger {
   case class DifferentClassificationException(dA: JValue, dB: JValue) extends RuntimeException(
     s"Cannot merge documents with different classifications:\n- ${compact(dA)}\n- ${compact(dB)}")
   
-  case class MissingSourceException(d: JValue) extends RuntimeException(
-    s"Cannot merge document without 'source' field: ${compact(d)}")
-
   implicit val json4sJacksonFormats = DefaultFormats
   private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
@@ -46,8 +42,8 @@ object DocumentMerger {
       if ((docA \ "classification") == (docB \ "classification")) docA \ "classification"
       else throw DifferentClassificationException(docA \ "classification", docB \ "classification"))
 
-    val annotatedA = annotate(purify(docA))
-    val annotatedB = annotate(purify(docB))
+    val annotatedA = DocumentAnnotator.annotate(purify(docA))
+    val annotatedB = DocumentAnnotator.annotate(purify(docB))
     val source = (annotatedA \ "source") merge (annotatedB \ "source")
     logger.debug("Starting document merging...")
     val result = doMerge(annotatedA.removeDirectField("source"), annotatedB.removeDirectField("source"), source)
@@ -69,52 +65,6 @@ object DocumentMerger {
       case _ => src
     })
     doc merge srcField
-  }
-
-  /** For a value to be annotated, it has to have only two children: value and source. */
-  private def isAnnotated(v: JValue): Boolean =
-    (v.children.size == 2) && (v \ "value" != JNothing) && (v \ "source" != JNothing)
-
-  /** For an array to be classified, all of its items must have a classification field. */
-  private def isClassified(arr: List[JValue]): Boolean = (arr.size > 0) &&
-    arr.forall(v => (v \ "classification" != JNothing) || (v \ "value" \ "classification" != JNothing))
-
-  /** Change the document so that every field has a reference to its source. */
-  private def annotate(doc: JValue): JValue = {
-    def doAnnotate(doc: JValue, srcHash: String): JValue = doc match {
-      case JObject(xs) => JObject(annotateFields(xs, srcHash))
-      case JArray(xs) if isClassified(xs) => JArray(uniquelyClassify(annotateArrays(xs, srcHash)))
-      case JArray(xs) => annotateValue(xs, srcHash)
-      case x => if (isAnnotated(x)) x else annotateValue(x, srcHash)
-    }
-    def annotateFields(vs: List[JField], srcHash: String): List[JField] = vs match {
-      case Nil => Nil
-      case (xn, xv) :: xs if isAnnotated(xv) => JField(xn, xv) :: annotateFields(xs, srcHash)
-      case (xn, xv) :: xs => JField(xn, doAnnotate(xv, srcHash)) :: annotateFields(xs, srcHash)
-    }
-    def annotateArrays(vs: List[JValue], srcHash: String): List[JValue] = vs match {
-      case Nil => Nil
-      case x :: xs if isAnnotated(x) => x :: annotateArrays(xs, srcHash)
-      case x :: xs => annotateValue(x, srcHash) :: annotateArrays(xs, srcHash)
-    }
-    def annotateValue(v: JValue, srcHash: String): JValue = ("value" -> v) ~ ("source" -> srcHash)
-    /** creating a unique classified array by merging any duplicates. */
-    def uniquelyClassify(arr: List[JValue]): List[JValue] = {
-      val seen = mutable.Map.empty[JValue, JValue]
-      for (x <- arr) {
-        val key = x \ "value" \ "classification"
-        seen += key -> seen.get(key).map(_ merge x).getOrElse(x)
-      }
-      seen.values.toList
-    }
-    val oldSrc = (doc \ "source").toOption.getOrElse(throw MissingSourceException(doc))
-    val result = doAnnotate(doc.removeDirectField("source"), oldSrc.sha1)
-    val annotated = result \\ "source" match {
-      case JObject(sources) => sources.exists(_._2 == JString(oldSrc.sha1))
-      case x => x == JString(oldSrc.sha1)
-    }
-    if (doc.children.size == 1 || annotated) result.replaceDirectField("source", oldSrc.sha1 -> oldSrc)
-    else result.replaceDirectField("source", oldSrc)
   }
 
   private def doMerge(valA: JValue, valB: JValue, src: JValue): JValue = (valA, valB) match {
@@ -168,7 +118,7 @@ object DocumentMerger {
 
   /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
   private def mergeStrategyForA(vA: JValue, vB: JValue, src: JValue): MergeStrategy = {
-    val canMerge = !isAnnotated(vA) && !isAnnotated(vB)
+    val canMerge = !DocumentAnnotator.isAnnotated(vA) && !DocumentAnnotator.isAnnotated(vB)
     if (canMerge) MergeStrategy.Merge
     else if (canReplaceA(vA, vB, src)) MergeStrategy.Replace
     else MergeStrategy.Keep
