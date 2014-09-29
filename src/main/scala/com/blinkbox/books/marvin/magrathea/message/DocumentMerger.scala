@@ -96,7 +96,6 @@ object DocumentMerger {
     case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
     case (JNothing, y) => y
     case (x, JNothing) => x
-    case (_, y) => y
   }
 
   private def mergeFields(vsA: List[JField], vsB: List[JField], src: Source): List[JField] = {
