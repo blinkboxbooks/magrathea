@@ -23,7 +23,6 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
-  private val md = java.security.MessageDigest.getInstance("SHA-1")
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- parseDocument(event.body.asString())
@@ -48,12 +47,12 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
-  private def sha1(input: String): String = md.digest(input.getBytes("UTF-8")).map("%02x".format(_)).mkString
-
   private def mergeDocuments(documents: List[JValue]): JValue = {
-    if (documents.isEmpty)
-      throw new IllegalArgumentException("Expected to merge a non-empty history list")
-    val merged = documents.par.reduce(documentMerge)
+    val merged = documents match {
+      case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
+      case x :: Nil => DocumentAnnotator.annotate(x)
+      case x => x.par.reduce(documentMerge)
+    }
     logger.info("Merged document")
     merged.removeDirectField("_id").removeDirectField("_rev")
   }

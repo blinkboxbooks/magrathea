@@ -20,14 +20,17 @@ object DocumentAnnotator {
 
   /** Change the document so that every field has a reference to its source. */
   def annotate(doc: JValue): JValue = {
+    val classification: JValue = "classification" -> doc \ "classification"
+    val schema: JValue = "$schema" -> doc \ "$schema"
     val oldSrc = (doc \ "source").toOption.getOrElse(throw MissingSourceException(doc))
-    val result = doAnnotate(doc.removeDirectField("source"), oldSrc.sha1)
+    val d = doc.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
+    val result = doAnnotate(d, oldSrc.sha1)
     val annotated = result \\ "source" match {
       case JObject(sources) => sources.exists(_._2 == JString(oldSrc.sha1))
       case x => x == JString(oldSrc.sha1)
     }
-    if (doc.children.size == 1 || annotated) result.overwriteDirectField("source", oldSrc.sha1 -> oldSrc)
-    else result.overwriteDirectField("source", oldSrc)
+    val docWithSource = result.overwriteDirectField("source", if (d.children.size == 0 || annotated) oldSrc.sha1 -> oldSrc else oldSrc)
+    schema merge classification merge docWithSource
   }
 
   /** For a value to be annotated, it has to have only two children: value and source. */
@@ -59,7 +62,7 @@ object DocumentAnnotator {
 
   private def annotateValue(v: JValue, srcHash: String): JValue = ("value" -> v) ~ ("source" -> srcHash)
 
-  /** Creating a unique classified array by merging any duplicates. */
+  /** creating a unique classified array by merging any duplicates. */
   private def uniquelyClassify(arr: List[JValue]): List[JValue] = {
     val seen = mutable.Map.empty[JValue, JValue]
     for (x <- arr) {
