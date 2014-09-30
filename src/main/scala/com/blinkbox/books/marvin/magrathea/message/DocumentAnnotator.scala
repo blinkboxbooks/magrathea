@@ -59,7 +59,7 @@ object DocumentAnnotator {
 
   private def annotateValue(v: JValue, srcHash: String): JValue = ("value" -> v) ~ ("source" -> srcHash)
 
-  /** creating a unique classified array by merging any duplicates. */
+  /** Creating a unique classified array by merging any duplicates. */
   private def uniquelyClassify(arr: List[JValue]): List[JValue] = {
     val seen = mutable.Map.empty[JValue, JValue]
     for (x <- arr) {

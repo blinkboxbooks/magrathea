@@ -67,14 +67,16 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     val doc = normaliseDocument(document, lookupKeyMatches)
     doc \ "contributors" match {
       case JArray(arr) =>
-        val newArr: JValue = "contributors" -> arr.map { c =>
-          val name = c \ "names" \ "display"
-          if (name == JNothing)
-            throw new IllegalArgumentException(s"Cannot extract display name from contributor: ${compact(render(c))}")
-          val f: JValue = "ids" -> ("bbb" -> sha1(name.extract[String]))
-          c merge f
+        val newArr: JValue = arr.map { contributor =>
+          val name = contributor \ "names" \ "display"
+          if (name == JNothing) throw new IllegalArgumentException(
+            s"Cannot extract display name from contributor: ${compact(render(contributor))}")
+          val ids: JValue = "ids" -> ("bbb" -> name.sha1)
+          val classification: JValue = (contributor \ "classification").toOption.getOrElse(
+            "classification" -> List(("realm" -> "bbb_id") ~ ("id" -> name.sha1)))
+          classification merge contributor merge ids
         }
-        doc.removeDirectField("contributors") merge newArr
+        doc.overwriteDirectField("contributors", newArr)
       case _ => doc
     }
   }
