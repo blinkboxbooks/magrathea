@@ -3,7 +3,7 @@ package com.blinkbox.books.marvin.magrathea.message
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._

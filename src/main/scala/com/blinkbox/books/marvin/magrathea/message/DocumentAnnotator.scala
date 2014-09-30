@@ -1,6 +1,6 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.json.Json4sExtensions._
 import org.json4s.JsonAST.JObject
 import org.json4s.JsonDSL._
 import org.json4s._
@@ -26,8 +26,8 @@ object DocumentAnnotator {
       case JObject(sources) => sources.exists(_._2 == JString(oldSrc.sha1))
       case x => x == JString(oldSrc.sha1)
     }
-    if (doc.children.size == 1 || annotated) result.replaceDirectField("source", oldSrc.sha1 -> oldSrc)
-    else result.replaceDirectField("source", oldSrc)
+    if (doc.children.size == 1 || annotated) result.overwriteDirectField("source", oldSrc.sha1 -> oldSrc)
+    else result.overwriteDirectField("source", oldSrc)
   }
 
   /** For a value to be annotated, it has to have only two children: value and source. */

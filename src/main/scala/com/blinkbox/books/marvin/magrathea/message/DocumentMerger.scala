@@ -1,7 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.message.DocumentMerger.MergeStrategy.MergeStrategy
 import com.typesafe.scalalogging.slf4j.Logger
 import org.joda.time.DateTime

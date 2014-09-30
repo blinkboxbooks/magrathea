@@ -1,7 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator._
 import com.blinkbox.books.marvin.magrathea.message.DocumentMerger._
 import org.joda.time.format.ISODateTimeFormat
