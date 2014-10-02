@@ -3,7 +3,7 @@ package com.blinkbox.books.marvin.magrathea.message
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.marvin.magrathea.Json4sExtensions._
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._
@@ -23,7 +23,6 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
-  private val md = java.security.MessageDigest.getInstance("SHA-1")
 
   override protected def handleEvent(event: Event, originalSender: ActorRef) = for {
     incomingDoc <- parseDocument(event.body.asString())
@@ -48,12 +47,13 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
-  private def sha1(input: String): String = md.digest(input.getBytes("UTF-8")).map("%02x".format(_)).mkString
-
   private def mergeDocuments(documents: List[JValue]): JValue = {
-    if (documents.isEmpty)
-      throw new IllegalArgumentException("Expected to merge a non-empty history list")
-    val merged = documents.par.reduce(documentMerge)
+    logger.debug("Starting document merging...")
+    val merged = documents match {
+      case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
+      case x :: Nil => DocumentAnnotator.annotate(x)
+      case x => x.par.reduce(documentMerge)
+    }
     logger.info("Merged document")
     merged.removeDirectField("_id").removeDirectField("_rev")
   }
@@ -67,14 +67,16 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     val doc = normaliseDocument(document, lookupKeyMatches)
     doc \ "contributors" match {
       case JArray(arr) =>
-        val newArr: JValue = "contributors" -> arr.map { c =>
-          val name = c \ "names" \ "display"
-          if (name == JNothing)
-            throw new IllegalArgumentException(s"Cannot extract display name from contributor: ${compact(render(c))}")
-          val f: JValue = "ids" -> ("bbb" -> sha1(name.extract[String]))
-          c merge f
+        val newArr: JValue = arr.map { contributor =>
+          val name = contributor \ "names" \ "display"
+          if (name == JNothing) throw new IllegalArgumentException(
+            s"Cannot extract display name from contributor: ${compact(render(contributor))}")
+          val ids: JValue = "ids" -> ("bbb" -> name.sha1)
+          val classification: JValue = (contributor \ "classification").toOption.getOrElse(
+            "classification" -> List(("realm" -> "bbb_id") ~ ("id" -> name.sha1)))
+          classification merge contributor merge ids
         }
-        doc.removeDirectField("contributors") merge newArr
+        doc.overwriteDirectField("contributors", newArr)
       case _ => doc
     }
   }
@@ -105,13 +107,14 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
 
   private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
-    val remaining = (document \ "source" \ "$remaining")
-      .removeDirectField("processedAt").removeDirectField("system")
+    val source = (document \ "source")
+      .removeDirectField("processedAt")
+      .remove(_ == document \ "source" \ "system" \ "version")
     val classification = document \ "classification"
-    if (schema == JNothing || remaining == JNothing || classification == JNothing)
+    if (schema == JNothing || source == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
-        s"Cannot extract history lookup key (schema, remaining, classification): ${compact(render(document))}")
-    val key = compact(render(List(schema, remaining, classification)))
+        s"Cannot extract history lookup key (schema, source, classification): ${compact(render(document))}")
+    val key = compact(render(List(schema, source, classification)))
     logger.debug("Extracted history lookup key: {}", key)
     key
   }
