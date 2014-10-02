@@ -48,6 +48,7 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
+    logger.debug("Starting document merging...")
     val merged = documents match {
       case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
       case x :: Nil => DocumentAnnotator.annotate(x)

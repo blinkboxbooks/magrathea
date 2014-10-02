@@ -226,19 +226,41 @@ class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with Jso
     }
   }
 
-  it should "deep merge the same sub-objects on two book documents with different classifications" in {
-    val bookA = sampleBook(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"))
-    )
-    val bookB = sampleBook(
-      "things" -> List(("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B"))
-    )
+  it should "merge the same sub-objects on two book documents with different classifications" in {
+    val bookA = sampleBook("things" -> List(
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A")
+    ))
+    val bookB = sampleBook("things" -> List(
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B")
+    ))
     val result = DocumentMerger.merge(bookA, bookB)
     val reverseResult = DocumentMerger.merge(bookB, bookA)
     Seq(result, reverseResult).foreach { doc =>
       (doc \ "things").children.size shouldEqual 2
       (doc \ "things").children should contain (("value" -> (bookA \ "things")(0)) ~ ("source" -> (bookA \ "source").sha1))
       (doc \ "things").children should contain (("value" -> (bookB \ "things")(0)) ~ ("source" -> (bookB \ "source").sha1))
+      doc \ "source" \ (bookA \ "source").sha1 shouldEqual bookA \ "source"
+      doc \ "source" \ (bookB \ "source").sha1 shouldEqual bookB \ "source"
+    }
+  }
+
+  it should "merge the same sub-objects on two book documents with multiple different classifications" in {
+    val bookA = sampleBook("things" -> List(
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "a-ness"))) ~ ("data" -> "Item A"),
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "b-ness"))) ~ ("data" -> "Item B")
+    ))
+    val bookB = sampleBook("things" -> List(
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "c-ness"))) ~ ("data" -> "Item C"),
+      ("classification" -> List(("realm" -> "type") ~ ("id" -> "d-ness"))) ~ ("data" -> "Item D")
+    ))
+    val result = DocumentMerger.merge(bookA, bookB)
+    val reverseResult = DocumentMerger.merge(bookB, bookA)
+    Seq(result, reverseResult).foreach { doc =>
+      (doc \ "things").children.size shouldEqual 4
+      (doc \ "things").children should contain (("value" -> (bookA \ "things")(0)) ~ ("source" -> (bookA \ "source").sha1))
+      (doc \ "things").children should contain (("value" -> (bookA \ "things")(1)) ~ ("source" -> (bookA \ "source").sha1))
+      (doc \ "things").children should contain (("value" -> (bookB \ "things")(0)) ~ ("source" -> (bookB \ "source").sha1))
+      (doc \ "things").children should contain (("value" -> (bookB \ "things")(1)) ~ ("source" -> (bookB \ "source").sha1))
       doc \ "source" \ (bookA \ "source").sha1 shouldEqual bookA \ "source"
       doc \ "source" \ (bookB \ "source").sha1 shouldEqual bookB \ "source"
     }

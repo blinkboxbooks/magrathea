@@ -37,9 +37,9 @@ object DocumentAnnotator {
   def isAnnotated(v: JValue): Boolean =
     (v.children.size == 2) && (v \ "value" != JNothing) && (v \ "source" != JNothing)
 
-  /** For an array to be classified, all of its items must have a classification field. */
-  private def isClassified(arr: List[JValue]): Boolean = (arr.size > 0) &&
-    arr.forall(v => (v \ "classification" != JNothing) || (v \ "value" \ "classification" != JNothing))
+  /** For a value to be classified, all of its children must have a classification field. */
+  def isClassified(v: JValue): Boolean = (v.children.size > 0) &&
+    v.children.forall(c => (c \ "classification" != JNothing) || (c \ "value" \ "classification" != JNothing))
 
   private def doAnnotate(doc: JValue, srcHash: String): JValue = doc match {
     case JObject(xs) => JObject(annotateFields(xs, srcHash))
@@ -62,7 +62,7 @@ object DocumentAnnotator {
 
   private def annotateValue(v: JValue, srcHash: String): JValue = ("value" -> v) ~ ("source" -> srcHash)
 
-  /** creating a unique classified array by merging any duplicates. */
+  /** Creating a unique classified array by merging any duplicates. */
   private def uniquelyClassify(arr: List[JValue]): List[JValue] = {
     val seen = mutable.Map.empty[JValue, JValue]
     for (x <- arr) {

@@ -26,7 +26,9 @@ object DocumentMerger {
   case class Sources(src: JValue) {
     /** There can be three cases: merge, replace or keep. Merge has priority over replace. */
     def mergeStrategyForX(x: JValue, y: JValue): MergeStrategy = {
-      val canMerge = !DocumentAnnotator.isAnnotated(x) && !DocumentAnnotator.isAnnotated(y)
+      val notAnnotated = !DocumentAnnotator.isAnnotated(x) && !DocumentAnnotator.isAnnotated(y)
+      val isClassified = DocumentAnnotator.isClassified(x) && DocumentAnnotator.isClassified(y)
+      val canMerge = notAnnotated || isClassified
       if (canMerge) MergeStrategy.Merge
       else if (canReplaceX(x, y)) MergeStrategy.Replace
       else MergeStrategy.Keep
@@ -81,9 +83,7 @@ object DocumentMerger {
     val annotatedA = DocumentAnnotator.annotate(purify(docA))
     val annotatedB = DocumentAnnotator.annotate(purify(docB))
     val src = Sources((annotatedA \ "source") merge (annotatedB \ "source"))
-    logger.debug("Starting document merging...")
     val result = doMerge(annotatedA.removeDirectField("source"), annotatedB.removeDirectField("source"), src)
-    logger.debug("Finished document merging")
     schema merge classification merge src.withDoc(result)
   }
 
