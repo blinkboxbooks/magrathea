@@ -108,7 +108,8 @@ class MessageHandler(documentDao: DocumentDao, errorHandler: ErrorHandler, retry
   private def extractHistoryLookupKey(document: JValue): String = {
     val schema = document \ "$schema"
     val source = (document \ "source")
-      .removeDirectField("processedAt").removeDirectField("system")
+      .removeDirectField("processedAt")
+      .remove(_ == document \ "source" \ "system" \ "version")
     val classification = document \ "classification"
     if (schema == JNothing || source == JNothing || classification == JNothing)
       throw new IllegalArgumentException(
