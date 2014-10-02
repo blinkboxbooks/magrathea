@@ -1,5 +1,16 @@
 # Change log
 
+## 0.0.2 ([#2](https://git.mobcastdev.com/Marvin/magrathea/pull/2) 2014-09-29 09:36:43)
+
+New algorithm
+
+### Improvements
+
+* Each document gets annotated before merging
+* Re-written the document merging algorithm
+
+Annotating the document means that every non-object and non-array field has a value and a source. For Objects and classified-arrays, each child is converted to a field with a value and a source. Non-classified arrays are converted to fields with a value and a source.
+
 ## 0.0.1 ([#1](https://git.mobcastdev.com/Marvin/magrathea/pull/1) 2014-09-12 17:02:56)
 
 First cut of magrathea
