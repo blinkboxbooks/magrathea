@@ -62,11 +62,12 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val cl1 = JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash1)))
     val ids0: JValue = "bbb" -> nameHash0
     val ids1: JValue = "bbb" -> nameHash1
-    (captor.getValue \ "contributors").children.size shouldEqual 2
-    (captor.getValue \ "contributors")(0) \ "classification" shouldEqual cl0
-    (captor.getValue \ "contributors")(0) \ "ids" shouldEqual ids0
-    (captor.getValue \ "contributors")(1) \ "classification" shouldEqual cl1
-    (captor.getValue \ "contributors")(1) \ "ids" shouldEqual ids1
+    val cArray = captor.getValue \ "contributors"
+    cArray.children.size shouldEqual 2
+    cArray(0) \ "classification" shouldEqual cl0
+    cArray(0) \ "ids" shouldEqual ids0
+    cArray(1) \ "classification" shouldEqual cl1
+    cArray(1) \ "ids" shouldEqual ids1
   }
 
   it should "keep contributor classification if exists" in new TestFixture {
@@ -85,9 +86,10 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
     val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
     val cl1 = JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash1)))
-    (captor.getValue \ "contributors").children.size shouldEqual 2
-    (captor.getValue \ "contributors")(0) \ "classification" shouldEqual JArray(List("AA"))
-    (captor.getValue \ "contributors")(1) \ "classification" shouldEqual cl1
+    val cArray = captor.getValue \ "contributors"
+    cArray.children.size shouldEqual 2
+    cArray(0) \ "classification" shouldEqual JArray(List("AA"))
+    cArray(1) \ "classification" shouldEqual cl1
   }
 
   it should "merge with existing contributor ids" in new TestFixture {
@@ -107,9 +109,10 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
     val ids0: JValue = ("xxx" -> "AA") ~ ("bbb" -> "BB")
     val ids1: JValue = "bbb" -> nameHash1
-    (captor.getValue \ "contributors").children.size shouldEqual 2
-    (captor.getValue \ "contributors")(0) \ "ids" shouldEqual ids0
-    (captor.getValue \ "contributors")(1) \ "ids" shouldEqual ids1
+    val cArray = captor.getValue \ "contributors"
+    cArray.children.size shouldEqual 2
+    cArray(0) \ "ids" shouldEqual ids0
+    cArray(1) \ "ids" shouldEqual ids1
   }
 
   it should "delete all history lookupKeyMatches except the first" in new TestFixture {
