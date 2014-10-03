@@ -3,11 +3,13 @@ package com.blinkbox.books.marvin.magrathea.message
 import akka.actor.{ActorRef, ActorSystem, Props, Status}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.json.Json4sExtensions._
+import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
-import org.json4s.JsonAST.{JNothing, JString, JValue}
+import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
@@ -39,6 +41,75 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
+  }
+
+  it should "classify contributors and add bbb_id" in new TestFixture {
+    val contributors: JValue = "contributors" -> List(
+      ("names" -> (("display" -> "Zaphod Beeblebrox") ~ ("sort" -> "Beeblebrox, Zaphod"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Zaphod is just some guy, you know?")
+      ,
+      ("names" -> (("display" -> "Anargyros Akrivos") ~ ("sort" -> "Akrivos, Anargyros"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Argy is just some guy, you know?")
+    )
+    handler ! bookEvent(sampleBook(contributors))
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
+    val nameHash0 = ((contributors \ "contributors")(0) \ "names" \ "display").sha1
+    val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
+    val cl0 = JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash0)))
+    val cl1 = JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash1)))
+    val ids0: JValue = "bbb" -> nameHash0
+    val ids1: JValue = "bbb" -> nameHash1
+    (captor.getValue \ "contributors").children.size shouldEqual 2
+    (captor.getValue \ "contributors")(0) \ "classification" shouldEqual cl0
+    (captor.getValue \ "contributors")(0) \ "ids" shouldEqual ids0
+    (captor.getValue \ "contributors")(1) \ "classification" shouldEqual cl1
+    (captor.getValue \ "contributors")(1) \ "ids" shouldEqual ids1
+  }
+
+  it should "keep contributor classification if exists" in new TestFixture {
+    val contributors: JValue = "contributors" -> List(
+      ("names" -> (("display" -> "Zaphod Beeblebrox") ~ ("sort" -> "Beeblebrox, Zaphod"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Zaphod is just some guy, you know?") ~
+      ("classification" -> List("AA"))
+      ,
+      ("names" -> (("display" -> "Anargyros Akrivos") ~ ("sort" -> "Akrivos, Anargyros"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Argy is just some guy, you know?")
+    )
+    handler ! bookEvent(sampleBook(contributors))
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
+    val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
+    val cl1 = JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash1)))
+    (captor.getValue \ "contributors").children.size shouldEqual 2
+    (captor.getValue \ "contributors")(0) \ "classification" shouldEqual JArray(List("AA"))
+    (captor.getValue \ "contributors")(1) \ "classification" shouldEqual cl1
+  }
+
+  it should "merge with existing contributor ids" in new TestFixture {
+    val contributors: JValue = "contributors" -> List(
+      ("names" -> (("display" -> "Zaphod Beeblebrox") ~ ("sort" -> "Beeblebrox, Zaphod"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Zaphod is just some guy, you know?") ~
+      ("ids" -> (("xxx" -> "AA") ~ ("bbb" -> "BB")))
+      ,
+      ("names" -> (("display" -> "Anargyros Akrivos") ~ ("sort" -> "Akrivos, Anargyros"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Argy is just some guy, you know?")
+    )
+    handler ! bookEvent(sampleBook(contributors))
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val captor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(documentDao, times(1)).storeHistoryDocument(captor.capture())
+    val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
+    val ids0: JValue = ("xxx" -> "AA") ~ ("bbb" -> "BB")
+    val ids1: JValue = "bbb" -> nameHash1
+    (captor.getValue \ "contributors").children.size shouldEqual 2
+    (captor.getValue \ "contributors")(0) \ "ids" shouldEqual ids0
+    (captor.getValue \ "contributors")(1) \ "ids" shouldEqual ids1
   }
 
   it should "delete all history lookupKeyMatches except the first" in new TestFixture {
@@ -148,9 +219,32 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     checkNoFailures()
   }
 
+  it should "trigger additional contributor merges if contributors are included in a document" in new TestFixture {
+    val contributors: JValue = sampleBook("contributors" -> List(
+      ("names" -> (("display" -> "Zaphod Beeblebrox") ~ ("sort" -> "Beeblebrox, Zaphod"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Zaphod is just some guy, you know?")
+      ,
+      ("names" -> (("display" -> "Anargyros Akrivos") ~ ("sort" -> "Akrivos, Anargyros"))) ~
+      ("role" -> "Author") ~ ("biography" -> "Argy is just some guy, you know?")
+    ))
+    handler ! bookEvent(contributors)
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val nameHash0 = ((contributors \ "contributors")(0) \ "names" \ "display").sha1
+    val nameHash1 = ((contributors \ "contributors")(1) \ "names" \ "display").sha1
+    val bookClassification = compact(render(contributors \ "classification"))
+    val classification0 = compact(render(JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash0)))))
+    val classification1 = compact(render(JArray(List[JValue](("realm" -> "bbb_id") ~ ("id" -> nameHash1)))))
+    verify(documentDao, times(1)).fetchHistoryDocuments(config.book, bookClassification)
+    verify(documentDao, times(1)).fetchHistoryDocuments(config.contributor, classification0)
+    verify(documentDao, times(1)).fetchHistoryDocuments(config.contributor, classification1)
+    verify(documentDao, times(3)).storeLatestDocument(any[JValue])
+  }
+
   trait TestFixture {
-    val errorHandler = mock[ErrorHandler]
-    doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
+    val config = mock[SchemaConfig]
+    doReturn("ingestion.book.metadata.v2").when(config).book
+    doReturn("ingestion.contributor.metadata.v2").when(config).contributor
 
     val documentDao = mock[DocumentDao]
 
@@ -166,10 +260,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(documentDao).deleteHistoryDocuments(any[List[(String, String)]])
     doReturn(Future.successful(())).when(documentDao).deleteLatestDocuments(any[List[(String, String)]])
 
-    val handler: ActorRef = TestActorRef(Props(new MessageHandler(documentDao, errorHandler, retryInterval)(testMerge)))
+    val errorHandler = mock[ErrorHandler]
+    doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
+
+    val handler: ActorRef = TestActorRef(Props(
+      new MessageHandler(config, documentDao, errorHandler, retryInterval)(testMerge)))
 
     def sampleBook(extraContent: JValue = JNothing): JValue = {
-      ("$schema" -> "ingestion.book.metadata.v2") ~
+      ("$schema" -> config.book) ~
       ("classification" -> List(("realm" -> "isbn") ~ ("id" -> "9780111222333"))) ~
       ("source" ->
         ("$remaining" ->

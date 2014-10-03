@@ -21,7 +21,7 @@ class MessageListener(config: MessageListenerConfig) {
   val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schema)
 
   val messageErrorHandler = errorHandler("message-error", config.error)
-  val messageHandler = system.actorOf(Props(new MessageHandler(documentDao,
+  val messageHandler = system.actorOf(Props(new MessageHandler(config.schema, documentDao,
     messageErrorHandler, config.retryInterval)(DocumentMerger.merge)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.input, messageHandler)
 
