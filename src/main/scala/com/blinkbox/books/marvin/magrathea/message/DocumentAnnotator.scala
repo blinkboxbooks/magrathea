@@ -16,7 +16,7 @@ import scala.language.implicitConversions
  */
 object DocumentAnnotator {
   case class MissingSourceException(d: JValue) extends RuntimeException(
-    s"Cannot merge document without 'source' field: ${compact(d)}")
+    s"Cannot merge document without 'source' field: ${compact(render(d))}")
 
   /** Change the document so that every field has a reference to its source. */
   def annotate(doc: JValue): JValue = {
