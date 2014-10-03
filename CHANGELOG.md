@@ -1,5 +1,15 @@
 # Change log
 
+## 0.0.3 ([#3](https://git.mobcastdev.com/Marvin/magrathea/pull/3) 2014-10-03 15:32:07)
+
+Additional contributor merge
+
+### Improvements
+
+* Whenever a book documents includes information about contributor(s), we initiate a contributor merge for each one of them
+* Added test cases for history document normalisation, along with contributor merge
+* Minor refactoring
+
 ## 0.0.2 ([#2](https://git.mobcastdev.com/Marvin/magrathea/pull/2) 2014-09-29 09:36:43)
 
 New algorithm
