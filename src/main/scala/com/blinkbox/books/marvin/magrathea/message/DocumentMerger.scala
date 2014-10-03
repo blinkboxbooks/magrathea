@@ -62,10 +62,10 @@ object DocumentMerger {
   }
 
   case class DifferentSchemaException(dA: JValue, dB: JValue) extends RuntimeException(
-    s"Cannot merge documents with different schemas:\n- ${compact(dA)}\n- ${compact(dB)}")
+    s"Cannot merge documents with different schemas:\n- ${compact(render(dA))}\n- ${compact(render(dB))}")
 
   case class DifferentClassificationException(dA: JValue, dB: JValue) extends RuntimeException(
-    s"Cannot merge documents with different classifications:\n- ${compact(dA)}\n- ${compact(dB)}")
+    s"Cannot merge documents with different classifications:\n- ${compact(render(dA))}\n- ${compact(render(dB))}")
   
   implicit val json4sJacksonFormats = DefaultFormats
   private val logger: Logger = Logger(LoggerFactory getLogger getClass.getName)
@@ -96,7 +96,7 @@ object DocumentMerger {
     case (JArray(xs), JArray(ys)) => JArray(mergeClassifiedArrays(xs, ys, src))
     case (JNothing, y) => y
     case (x, JNothing) => x
-    case (x, y) => throw new IllegalArgumentException(s"Unexpected values found:\n- ${compact(x)}\n- ${compact(y)}")
+    case (x, y) => throw new IllegalArgumentException(s"Unexpected values found:\n- ${compact(render(x))}\n- ${compact(render(y))}")
   }
 
   private def mergeFields(vsA: List[JField], vsB: List[JField], src: Sources): List[JField] = {
@@ -127,10 +127,10 @@ object DocumentMerger {
       case x :: xs => yleft find (_ \ "value" \ "classification" == x \ "value" \ "classification") match {
         case Some(y) =>
           if (src.canReplaceX(x, y)) {
-            logger.debug("Replacing classification '{}'", compact(x \ "value" \ "classification"))
+            logger.debug("Replacing classification '{}'", compact(render(x \ "value" \ "classification")))
             y :: mergeRec(xs, yleft filterNot (_ == y))
           } else {
-            logger.debug("Keeping classification '{}'", compact(x \ "value" \ "classification"))
+            logger.debug("Keeping classification '{}'", compact(render(x \ "value" \ "classification")))
             x :: mergeRec(xs, yleft filterNot (_ == y))
           }
         case None => x :: mergeRec(xs, yleft)
