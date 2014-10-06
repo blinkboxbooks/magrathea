@@ -5,6 +5,7 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.message.DistributionType.DistributionType
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._
@@ -18,7 +19,12 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
-class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+object DistributionType extends Enumeration {
+  type DistributionType = Value
+  val Distribute, Undistribute = Value
+}
+
+class MessageHandler(config: SchemaConfig, documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
                     (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
@@ -33,7 +39,7 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     _ <- normaliseDatabase(historyLookupKeyMatches)(documentDao.deleteHistoryDocuments)
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
-    _ <- mergeAndStoreFlow(schema, classification) zip contributorMerge(normalisedIncomingDoc)
+    _ <- mergeStoreDistribute(schema, classification) zip contributorMerge(normalisedIncomingDoc)
   } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -46,12 +52,12 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     case JArray(arr) =>
       logger.info("Merging contributors")
       Future.sequence(arr.map { contributor =>
-        mergeAndStoreFlow(schema.contributor, extractClassification(contributor))
+        mergeStoreDistribute(config.contributor, extractClassification(contributor))
       }).map(_ => ())
     case _ => Future.successful(())
   }
 
-  private def mergeAndStoreFlow(schema: String, classification: String): Future[Unit] = for {
+  private def mergeStoreDistribute(schema: String, classification: String): Future[Unit] = for {
     history <- documentDao.fetchHistoryDocuments(schema, classification)
     mergedDoc = mergeDocuments(history)
     latestLookupKey = extractLatestLookupKey(mergedDoc)
@@ -60,6 +66,12 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     _ <- normaliseDatabase(latestLookupKeyMatches)(documentDao.deleteLatestDocuments)
     _ <- documentDao.storeLatestDocument(normalisedMergedDoc)
   } yield ()
+
+  private def getDistributionInformation(document: JValue) = document \ "$schema" match {
+    case JString(schema) if schema == config.book => ???
+    case JString(schema) if schema == config.contributor => ???
+    case x => throw new IllegalArgumentException(s"Cannot get distribution information from unsupported schema: $x")
+  }
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
     logger.debug("Starting document merging...")
