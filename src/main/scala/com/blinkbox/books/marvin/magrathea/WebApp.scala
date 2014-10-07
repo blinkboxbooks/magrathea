@@ -20,6 +20,6 @@ object WebApp extends App with Configuration with Loggers {
   val localUrl = appConfig.service.api.localUrl
   HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))
 
-  val messageListener = new MessageListener(appConfig.messageListener)
+  val messageListener = new MessageListener(appConfig.listener)
   messageListener.start()
 }

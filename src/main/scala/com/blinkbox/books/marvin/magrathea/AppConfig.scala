@@ -11,17 +11,19 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, messageListener: MessageListenerConfig, swagger: SwaggerConfig)
+case class AppConfig(service: ServiceConfig, listener: ListenerConfig, swagger: SwaggerConfig)
 case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class MessageListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
-  actorTimeout: FiniteDuration, schema: SchemaConfig, input: QueueConfiguration, error: PublisherConfiguration)
+case class ListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
+                          actorTimeout: FiniteDuration, schemas: SchemaConfig, distributor: DistributorConfig,
+                          input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
+case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
 
 object AppConfig {
   val prefix = "service.magrathea"
   def apply(config: Config) = new AppConfig(
     ServiceConfig(config, s"$prefix.api.public"),
-    MessageListenerConfig(config, s"$prefix.messageListener"),
+    ListenerConfig(config, s"$prefix.messageListener"),
     SwaggerConfig(config, 1)
   )
 }
@@ -33,13 +35,14 @@ object ServiceConfig {
   )
 }
 
-object MessageListenerConfig {
-  def apply(config: Config, prefix: String) = new MessageListenerConfig(
+object ListenerConfig {
+  def apply(config: Config, prefix: String) = new ListenerConfig(
     RabbitMqConfig(config),
     config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
     SchemaConfig(config, s"$prefix.schema"),
+    DistributorConfig(config, s"$prefix.distributor"),
     QueueConfiguration(config.getConfig(s"$prefix.input")),
     PublisherConfiguration(config.getConfig(s"$prefix.error"))
   )
@@ -49,5 +52,12 @@ object SchemaConfig {
   def apply(config: Config, prefix: String) = new SchemaConfig(
     config.getString(s"$prefix.book"),
     config.getString(s"$prefix.contributor")
+  )
+}
+
+object DistributorConfig {
+  def apply(config: Config, prefix: String) = new DistributorConfig(
+    PublisherConfiguration(config.getConfig(s"$prefix.book.output")),
+    PublisherConfiguration(config.getConfig(s"$prefix.contributor.output"))
   )
 }

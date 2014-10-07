@@ -30,7 +30,7 @@ trait DocumentDao {
   def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
-class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
+class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)
   extends DocumentDao with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
   implicit val system = ActorSystem("couchdb-system")
@@ -95,8 +95,8 @@ class DefaultDocumentDao(couchDbUrl: URL, config: SchemaConfig)
     }
 
   private def getHistoryFetchUri(schema: String, key: String): Future[Uri] = Future {
-    if (schema == config.book) bookUri.withQuery(("key", key))
-    else if (schema == config.contributor) contributorUri.withQuery(("key", key))
+    if (schema == schemas.book) bookUri.withQuery(("key", key))
+    else if (schema == schemas.contributor) contributorUri.withQuery(("key", key))
     else throw new IllegalArgumentException(s"Unsupported schema: $schema")
   }
 
