@@ -3,28 +3,28 @@ package com.blinkbox.books.marvin.magrathea.message
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.ListenerConfig
+import com.blinkbox.books.marvin.magrathea.AppConfig
 import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
 import com.blinkbox.books.rabbitmq.RabbitMqConsumer.QueueConfiguration
 import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, RabbitMqConsumer}
 
-class MessageListener(config: ListenerConfig) {
+class MessageListener(config: AppConfig) {
   implicit val system = ActorSystem("magrathea-message")
-  implicit val executionContext = DiagnosticExecutionContext(system.dispatcher)
-  implicit val timeout = Timeout(config.actorTimeout)
+  implicit val ec = DiagnosticExecutionContext(system.dispatcher)
+  implicit val timeout = Timeout(config.listener.actorTimeout)
   sys.addShutdownHook(system.shutdown())
 
-  val consumerConnection = RabbitMq.reliableConnection(config.rabbitMq)
-  val publisherConnection = RabbitMq.recoveredConnection(config.rabbitMq)
+  val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
+  val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
 
   val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)
-  val distributor = new DocumentDistributor(config.distributor, config.schemas)
+  val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
 
-  val messageErrorHandler = errorHandler("message-error", config.error)
+  val messageErrorHandler = errorHandler("message-error", config.listener.error)
   val messageHandler = system.actorOf(Props(new MessageHandler(config.schemas, documentDao, distributor,
-    messageErrorHandler, config.retryInterval)(DocumentMerger.merge)), name = "message-handler")
-  val messageConsumer = consumer("message-consumer", config.input, messageHandler)
+    messageErrorHandler, config.listener.retryInterval)(DocumentMerger.merge)), name = "message-handler")
+  val messageConsumer = consumer("message-consumer", config.listener.input, messageHandler)
 
   def start() {
     messageConsumer ! RabbitMqConsumer.Init

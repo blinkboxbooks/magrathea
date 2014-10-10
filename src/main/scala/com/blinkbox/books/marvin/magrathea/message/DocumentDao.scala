@@ -21,6 +21,7 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait DocumentDao {
+  def getLatestDocumentById(id: String): Future[Option[JValue]]
   def lookupHistoryDocument(key: String): Future[List[JValue]]
   def lookupLatestDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
@@ -37,14 +38,23 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   implicit val json4sJacksonFormats = DefaultFormats
   private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
-  private val lookupHistoryUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_design/index/_view/replace_lookup"))
-  private val lookupLatestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest/_design/index/_view/replace_lookup"))
-  private val storeHistoryUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history"))
-  private val storeLatestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest"))
-  private val deleteHistoryUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_bulk_docs"))
-  private val deleteLatestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest/_bulk_docs"))
-  private val bookUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_design/history/_view/book"))
-  private val contributorUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history/_design/history/_view/contributor"))
+  private val historyUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history"))
+  private val latestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest"))
+  private val lookupHistoryUri = historyUri.withPath(historyUri.path ++ Path("/_design/index/_view/replace_lookup"))
+  private val lookupLatestUri = latestUri.withPath(latestUri.path ++ Path("/_design/index/_view/replace_lookup"))
+  private val deleteHistoryUri = historyUri.withPath(historyUri.path ++ Path("/_bulk_docs"))
+  private val deleteLatestUri = latestUri.withPath(latestUri.path ++ Path("/_bulk_docs"))
+  private val bookUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/book"))
+  private val contributorUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/contributor"))
+
+  override def getLatestDocumentById(id: String): Future[Option[JValue]] = {
+    println(latestUri.withPath(latestUri.path ++ Path(s"/$id")).toString())
+    pipeline(Get(latestUri.withPath(latestUri.path ++ Path(s"/$id")))).map {
+      case resp if resp.status == OK => Option(parse(resp.entity.asString))
+      case resp if resp.status == NotFound => None
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
+  }
 
   override def lookupHistoryDocument(key: String): Future[List[JValue]] =
     pipeline(Get(lookupHistoryUri.withQuery(("key", key)))).map {
@@ -67,13 +77,13 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)
     }
 
   override def storeHistoryDocument(document: JValue): Future[Unit] =
-    pipeline(Post(storeHistoryUri, document)).map {
+    pipeline(Post(historyUri, document)).map {
       case resp if resp.status == Created => logger.debug("Stored history document")
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
   override def storeLatestDocument(document: JValue): Future[Unit] =
-    pipeline(Post(storeLatestUri, document)).map {
+    pipeline(Post(latestUri, document)).map {
       case resp if resp.status == Created => logger.info("Stored merged document")
       case resp => throw new UnsuccessfulResponseException(resp)
     }

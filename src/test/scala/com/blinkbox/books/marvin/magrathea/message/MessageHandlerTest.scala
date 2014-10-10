@@ -263,11 +263,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(documentDao).deleteHistoryDocuments(any[List[(String, String)]])
     doReturn(Future.successful(())).when(documentDao).deleteLatestDocuments(any[List[(String, String)]])
 
+    val distributor = mock[DocumentDistributor]
+    doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
+
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
 
     val handler: ActorRef = TestActorRef(Props(
-      new MessageHandler(config, documentDao, errorHandler, retryInterval)(testMerge)))
+      new MessageHandler(config, documentDao, distributor, errorHandler, retryInterval)(testMerge)))
 
     def sampleBook(extraContent: JValue = JNothing): JValue = {
       ("$schema" -> config.book) ~

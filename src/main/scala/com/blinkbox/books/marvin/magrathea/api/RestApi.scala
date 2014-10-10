@@ -1,10 +1,9 @@
 package com.blinkbox.books.marvin.magrathea.api
 
 import akka.actor.ActorRefFactory
-import com.blinkbox.books.json.ExplicitTypeHints
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.ServiceConfig
-import com.blinkbox.books.spray.v1.{ListPage, Version1JsonSupport}
+import com.blinkbox.books.marvin.magrathea.message.DocumentDao
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
 import org.slf4j.LoggerFactory
 import spray.http.HttpHeaders.RawHeader
@@ -15,21 +14,19 @@ import spray.util.LoggingContext
 import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
-  def getAll: Route
+  def getLatestBookById: Route
 }
 
-class RestApi(config: ServiceConfig)(implicit val actorRefFactory: ActorRefFactory)
-  extends RestRoutes with CommonDirectives with Version1JsonSupport {
+class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val actorRefFactory: ActorRefFactory)
+  extends RestRoutes with CommonDirectives with v2.JsonSupport {
 
-  implicit val executionContext = DiagnosticExecutionContext(actorRefFactory.dispatcher)
+  implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   implicit val timeout = config.api.timeout
   implicit val log = LoggerFactory.getLogger(classOf[RestApi])
-  override val responseTypeHints = ExplicitTypeHints(Map(
-    classOf[ListPage[_]] -> "urn:blinkboxbooks:schema:list"))
 
-  override def getAll: Route = get {
-    pathEndOrSingleSlash {
-      uncacheable(s"myKey = ${config.myKey.toString}")
+  override def getLatestBookById: Route = get {
+    path("books" / Segment) { id =>
+      onSuccess(documentDao.getLatestDocumentById(id))(uncacheable(_))
     }
   }
 
@@ -37,8 +34,8 @@ class RestApi(config: ServiceConfig)(implicit val actorRefFactory: ActorRefFacto
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          path("magrathea") {
-            getAll
+          pathPrefix("magrathea") {
+            getLatestBookById
           }
         }
       }
