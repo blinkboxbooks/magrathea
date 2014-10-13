@@ -5,6 +5,7 @@ import java.util.concurrent.Executors
 
 import akka.actor.ActorSystem
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.spray._
@@ -48,7 +49,8 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
 
   override def getLatestDocumentById(id: String): Future[Option[JValue]] = {
     pipeline(Get(latestUri.withPath(latestUri.path ++ Path(s"/$id")))).map {
-      case resp if resp.status == OK => Option(parse(resp.entity.asString))
+      case resp if resp.status == OK => Option(parse(resp.entity.asString)
+        .removeDirectField("_id").removeDirectField("_rev"))
       case resp if resp.status == NotFound => None
       case resp => throw new UnsuccessfulResponseException(resp)
     }
