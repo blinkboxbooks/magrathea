@@ -48,7 +48,6 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)
   private val contributorUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/contributor"))
 
   override def getLatestDocumentById(id: String): Future[Option[JValue]] = {
-    println(latestUri.withPath(latestUri.path ++ Path(s"/$id")).toString())
     pipeline(Get(latestUri.withPath(latestUri.path ++ Path(s"/$id")))).map {
       case resp if resp.status == OK => Option(parse(resp.entity.asString))
       case resp if resp.status == NotFound => None
