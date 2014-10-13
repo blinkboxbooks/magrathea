@@ -11,8 +11,7 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, listener: ListenerConfig, couchDbUrl: URL, schemas: SchemaConfig,
-                     swagger: SwaggerConfig)
+case class AppConfig(service: ServiceConfig, listener: ListenerConfig, couchDbUrl: URL, schemas: SchemaConfig)
 case class ServiceConfig(api: ApiConfig)
 case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
                           distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
@@ -25,8 +24,7 @@ object AppConfig {
     ServiceConfig(config, s"$prefix.api.public"),
     ListenerConfig(config, s"$prefix.messageListener"),
     config.getHttpUrl(s"$prefix.couchdb.url"),
-    SchemaConfig(config, s"$prefix.schema"),
-    SwaggerConfig(config, 2)
+    SchemaConfig(config, s"$prefix.schema")
   )
 }
 
