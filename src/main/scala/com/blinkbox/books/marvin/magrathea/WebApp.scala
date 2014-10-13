@@ -16,7 +16,7 @@ object WebApp extends App with Configuration with Loggers {
   implicit val ec = DiagnosticExecutionContext(system.dispatcher)
   implicit val timeout = Timeout(appConfig.service.api.timeout)
   sys.addShutdownHook(system.shutdown())
-  val service = system.actorOf(Props(classOf[WebService], appConfig))
+  val service = system.actorOf(Props(classOf[WebService], appConfig), "magrathea-api")
   val localUrl = appConfig.service.api.localUrl
   HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))
 
