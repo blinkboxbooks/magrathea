@@ -1,5 +1,13 @@
 # Change log
 
+## 0.0.4 ([#4](https://git.mobcastdev.com/Marvin/magrathea/pull/4) 2014-10-10 16:57:13)
+
+Book retrieval implementation
+
+### Improvement
+
+* Added book retrieval API implementation
+
 ## 0.0.3 ([#3](https://git.mobcastdev.com/Marvin/magrathea/pull/3) 2014-10-03 15:32:07)
 
 Additional contributor merge
