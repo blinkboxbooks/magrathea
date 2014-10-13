@@ -3,7 +3,6 @@ package com.blinkbox.books.marvin.magrathea.message
 import java.net.URL
 
 import com.blinkbox.books.config.ApiConfig
-import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.ServiceConfig
 import com.blinkbox.books.marvin.magrathea.api.RestApi
 import com.blinkbox.books.spray.v2
@@ -17,7 +16,6 @@ import org.mockito.Mockito._
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpecLike, Matchers}
 import spray.http.StatusCodes._
-import spray.httpx.Json4sJacksonSupport
 import spray.routing.HttpService
 import spray.testkit.ScalatestRouteTest
 
@@ -26,8 +24,7 @@ import scala.concurrent.duration._
 
 @RunWith(classOf[JUnitRunner])
 class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService with MockitoSyrup with v2.JsonSupport
-  with Json4sJacksonSupport with JsonMethods with Matchers {
-  implicit val json4sJacksonFormats = DefaultFormats
+  with JsonMethods with Matchers {
   implicit val actorRefFactory = system
   implicit val routeTestTimeout = RouteTestTimeout(5.seconds)
 
