@@ -2,23 +2,19 @@ package com.blinkbox.books.marvin.magrathea.message
 
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
-import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.AppConfig
 import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
 import com.blinkbox.books.rabbitmq.RabbitMqConsumer.QueueConfiguration
 import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, RabbitMqConsumer}
 
-class MessageListener(config: AppConfig) {
-  implicit val system = ActorSystem("magrathea-message")
-  implicit val ec = DiagnosticExecutionContext(system.dispatcher)
-  implicit val timeout = Timeout(config.listener.actorTimeout)
-  sys.addShutdownHook(system.shutdown())
+import scala.concurrent.ExecutionContext
 
+class MessageListener(config: AppConfig)(implicit system: ActorSystem, ex: ExecutionContext, timeout: Timeout) {
   val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
   val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
 
-  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)
+  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(system)
   val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
 
   val messageErrorHandler = errorHandler("message-error", config.listener.error)

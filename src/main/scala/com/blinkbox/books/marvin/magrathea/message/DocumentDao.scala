@@ -31,10 +31,9 @@ trait DocumentDao {
   def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
-class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)
+class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
   extends DocumentDao with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
-  implicit val system = ActorSystem("couchdb-system")
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   implicit val json4sJacksonFormats = DefaultFormats
   private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive

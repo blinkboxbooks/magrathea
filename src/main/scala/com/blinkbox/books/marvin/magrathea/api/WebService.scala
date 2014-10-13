@@ -9,7 +9,7 @@ import spray.routing.HttpServiceActor
 
 class WebService(config: AppConfig) extends HttpServiceActor {
   implicit val executionContext = DiagnosticExecutionContext(actorRefFactory.dispatcher)
-  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)
+  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(context.system)
   val restApi = new RestApi(config.service, documentDao)
   val healthService = new HealthCheckHttpService {
     override implicit def actorRefFactory = WebService.this.actorRefFactory
