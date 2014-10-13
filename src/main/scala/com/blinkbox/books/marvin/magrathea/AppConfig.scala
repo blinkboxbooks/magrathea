@@ -13,7 +13,7 @@ import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, listener: ListenerConfig, couchDbUrl: URL, schemas: SchemaConfig,
                      swagger: SwaggerConfig)
-case class ServiceConfig(api: ApiConfig, myKey: Int)
+case class ServiceConfig(api: ApiConfig)
 case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
                           distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
@@ -26,14 +26,13 @@ object AppConfig {
     ListenerConfig(config, s"$prefix.messageListener"),
     config.getHttpUrl(s"$prefix.couchdb.url"),
     SchemaConfig(config, s"$prefix.schema"),
-    SwaggerConfig(config, 1)
+    SwaggerConfig(config, 2)
   )
 }
 
 object ServiceConfig {
   def apply(config: Config, prefix: String) = new ServiceConfig(
-    ApiConfig(config, prefix),
-    config.getInt(s"$prefix.myKey")
+    ApiConfig(config, prefix)
   )
 }
 
