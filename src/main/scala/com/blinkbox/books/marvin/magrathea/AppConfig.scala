@@ -11,37 +11,44 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, messageListener: MessageListenerConfig, swagger: SwaggerConfig)
-case class ServiceConfig(api: ApiConfig, myKey: Int)
-case class MessageListenerConfig(rabbitMq: RabbitMqConfig, couchDbUrl: URL, retryInterval: FiniteDuration,
-  actorTimeout: FiniteDuration, schema: SchemaConfig, input: QueueConfiguration, error: PublisherConfiguration)
+case class AppConfig(service: ServiceConfig, listener: ListenerConfig, couchDbUrl: URL, schemas: SchemaConfig)
+case class ServiceConfig(api: ApiConfig)
+case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
+                          distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
+case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
 
 object AppConfig {
   val prefix = "service.magrathea"
   def apply(config: Config) = new AppConfig(
     ServiceConfig(config, s"$prefix.api.public"),
-    MessageListenerConfig(config, s"$prefix.messageListener"),
-    SwaggerConfig(config, 1)
+    ListenerConfig(config, s"$prefix.messageListener"),
+    config.getHttpUrl(s"$prefix.couchdb.url"),
+    SchemaConfig(config, s"$prefix.schema")
   )
 }
 
 object ServiceConfig {
   def apply(config: Config, prefix: String) = new ServiceConfig(
-    ApiConfig(config, prefix),
-    config.getInt(s"$prefix.myKey")
+    ApiConfig(config, prefix)
   )
 }
 
-object MessageListenerConfig {
-  def apply(config: Config, prefix: String) = new MessageListenerConfig(
+object ListenerConfig {
+  def apply(config: Config, prefix: String) = new ListenerConfig(
     RabbitMqConfig(config),
-    config.getHttpUrl(s"$prefix.couchdb.url"),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
-    SchemaConfig(config, s"$prefix.schema"),
+    DistributorConfig(config, s"$prefix.distributor"),
     QueueConfiguration(config.getConfig(s"$prefix.input")),
     PublisherConfiguration(config.getConfig(s"$prefix.error"))
+  )
+}
+
+object DistributorConfig {
+  def apply(config: Config, prefix: String) = new DistributorConfig(
+    PublisherConfiguration(config.getConfig(s"$prefix.book.output")),
+    PublisherConfiguration(config.getConfig(s"$prefix.contributor.output"))
   )
 }
 

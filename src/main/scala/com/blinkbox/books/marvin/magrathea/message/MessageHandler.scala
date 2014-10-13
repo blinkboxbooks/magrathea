@@ -18,7 +18,8 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
-class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
+                     errorHandler: ErrorHandler, retryInterval: FiniteDuration)
                     (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
@@ -33,7 +34,7 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     _ <- normaliseDatabase(historyLookupKeyMatches)(documentDao.deleteHistoryDocuments)
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
-    _ <- mergeAndStoreFlow(schema, classification) zip contributorMerge(normalisedIncomingDoc)
+    _ <- mergeStoreDistribute(schema, classification) zip contributorMerge(normalisedIncomingDoc)
   } yield ()
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -46,12 +47,12 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     case JArray(arr) =>
       logger.info("Merging contributors")
       Future.sequence(arr.map { contributor =>
-        mergeAndStoreFlow(schema.contributor, extractClassification(contributor))
+        mergeStoreDistribute(schemas.contributor, extractClassification(contributor))
       }).map(_ => ())
     case _ => Future.successful(())
   }
 
-  private def mergeAndStoreFlow(schema: String, classification: String): Future[Unit] = for {
+  private def mergeStoreDistribute(schema: String, classification: String): Future[Unit] = for {
     history <- documentDao.fetchHistoryDocuments(schema, classification)
     mergedDoc = mergeDocuments(history)
     latestLookupKey = extractLatestLookupKey(mergedDoc)
@@ -59,6 +60,7 @@ class MessageHandler(schema: SchemaConfig, documentDao: DocumentDao, errorHandle
     normalisedMergedDoc = normaliseDocument(mergedDoc, latestLookupKeyMatches)
     _ <- normaliseDatabase(latestLookupKeyMatches)(documentDao.deleteLatestDocuments)
     _ <- documentDao.storeLatestDocument(normalisedMergedDoc)
+    _ <- distributor.sendDistributionInformation(normalisedMergedDoc)
   } yield ()
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
