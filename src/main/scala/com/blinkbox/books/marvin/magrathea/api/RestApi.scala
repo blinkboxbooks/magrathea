@@ -15,6 +15,7 @@ import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
   def getLatestBookById: Route
+  def search: Route
 }
 
 class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val actorRefFactory: ActorRefFactory)
@@ -24,9 +25,17 @@ class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val acto
   implicit val timeout = config.api.timeout
   implicit val log = LoggerFactory.getLogger(classOf[RestApi])
 
-  override def getLatestBookById: Route = get {
+  override def getLatestBookById = get {
     path("books" / Segment) { id =>
       onSuccess(documentDao.getLatestDocumentById(id))(uncacheable(_))
+    }
+  }
+
+  override def search = get {
+    path("search") {
+      parameter('q) { q =>
+        uncacheable(OK, q)
+      }
     }
   }
 
