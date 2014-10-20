@@ -7,6 +7,9 @@ import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
 import com.blinkbox.books.rabbitmq.RabbitMqConsumer.QueueConfiguration
 import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, RabbitMqConsumer}
+import com.sksamuel.elastic4s.ElasticClient
+import com.sksamuel.elastic4s.ElasticDsl._
+import org.elasticsearch.common.settings.ImmutableSettings
 
 import scala.concurrent.ExecutionContext
 
@@ -16,10 +19,14 @@ class MessageListener(config: AppConfig)(implicit system: ActorSystem, ex: Execu
 
   val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(system)
   val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
+  val elasticSettings = ImmutableSettings.settingsBuilder().put("cluster.name", config.elasticsearch.cluster).build()
+  val elasticClient = ElasticClient.remote(elasticSettings, (config.elasticsearch.host, config.elasticsearch.port))
+  elasticClient.execute { create index config.elasticsearch.index }
 
   val messageErrorHandler = errorHandler("message-error", config.listener.error)
   val messageHandler = system.actorOf(Props(new MessageHandler(config.schemas, documentDao, distributor,
-    messageErrorHandler, config.listener.retryInterval)(DocumentMerger.merge)), name = "message-handler")
+    elasticClient, config.elasticsearch.index, messageErrorHandler, config.listener.retryInterval)
+    (DocumentMerger.merge)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.listener.input, messageHandler)
 
   def start() {

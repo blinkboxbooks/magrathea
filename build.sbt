@@ -18,7 +18,8 @@ libraryDependencies ++= {
     "com.blinkbox.books"        %% "common-scala-test" % "0.3.0"   % Test,
     "com.blinkbox.books"        %% "common-spray"      % "0.17.1",
     "com.blinkbox.books"        %% "common-spray-auth" % "0.7.1",
-    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "7.1.0"
+    "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "7.1.0",
+    "com.sksamuel.elastic4s"    %% "elastic4s"         % "1.3.2"
   )
 }
 

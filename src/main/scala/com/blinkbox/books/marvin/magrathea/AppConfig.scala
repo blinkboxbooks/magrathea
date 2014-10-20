@@ -12,12 +12,17 @@ import com.typesafe.config.Config
 import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, listener: ListenerConfig,
-  couchDbUrl: URL, elasticSearchUrl: URL, schemas: SchemaConfig)
+  couchDbUrl: URL, elasticsearch: ElasticConfig, schemas: SchemaConfig)
 case class ServiceConfig(api: ApiConfig)
 case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
   distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
+case class ElasticConfig(url: URL, index: String) {
+  val host = url.getHost
+  val port = url.getPort
+  val cluster = url.getPath.drop(1) // drop the initial slash
+}
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -25,7 +30,7 @@ object AppConfig {
     ServiceConfig(config, s"$prefix.api.public"),
     ListenerConfig(config, s"$prefix.messageListener"),
     config.getHttpUrl(s"$prefix.couchdb.url"),
-    config.getHttpUrl(s"$prefix.elasticsearch.url"),
+    ElasticConfig(config, s"$prefix.elasticsearch"),
     SchemaConfig(config, s"$prefix.schema")
   )
 }
@@ -58,5 +63,12 @@ object SchemaConfig {
   def apply(config: Config, prefix: String) = new SchemaConfig(
     config.getString(s"$prefix.book"),
     config.getString(s"$prefix.contributor")
+  )
+}
+
+object ElasticConfig {
+  def apply(config: Config, prefix: String) = new ElasticConfig(
+    config.getUrl(s"$prefix.url"),
+    config.getString(s"$prefix.index")
   )
 }

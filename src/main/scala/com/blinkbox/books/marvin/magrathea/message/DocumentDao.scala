@@ -27,7 +27,7 @@ trait DocumentDao {
   def lookupLatestDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
   def storeHistoryDocument(document: JValue): Future[Unit]
-  def storeLatestDocument(document: JValue): Future[Unit]
+  def storeLatestDocument(document: JValue): Future[String]
   def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
   def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
 }
@@ -82,9 +82,12 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
-  override def storeLatestDocument(document: JValue): Future[Unit] =
+  override def storeLatestDocument(document: JValue): Future[String] =
     pipeline(Post(latestUri, document)).map {
-      case resp if resp.status == Created => logger.info("Stored merged document")
+      case resp if resp.status == Created =>
+        val docId = (parse(resp.entity.asString) \ "id").extract[String]
+        logger.info("Stored merged document with id: {}", docId)
+        docId
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 

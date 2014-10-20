@@ -7,6 +7,8 @@ import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
+import com.sksamuel.elastic4s.{IndexDefinition, ElasticClient}
+import org.elasticsearch.action.index.IndexResponse
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
@@ -266,11 +268,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val distributor = mock[DocumentDistributor]
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
 
+    val elasticClient = mock[ElasticClient]
+    doReturn(Future.successful(new IndexResponse())).when(elasticClient).execute(any[IndexDefinition])
+
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
 
     val handler: ActorRef = TestActorRef(Props(
-      new MessageHandler(config, documentDao, distributor, errorHandler, retryInterval)(testMerge)))
+      new MessageHandler(config, documentDao, distributor, elasticClient, "", errorHandler, retryInterval)(testMerge)))
 
     def sampleBook(extraContent: JValue = JNothing): JValue = {
       ("$schema" -> config.book) ~
