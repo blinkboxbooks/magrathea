@@ -18,8 +18,8 @@ trait RestRoutes extends HttpService {
   def search: Route
 }
 
-class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val actorRefFactory: ActorRefFactory)
-  extends RestRoutes with CommonDirectives with v2.JsonSupport {
+class RestApi(config: ServiceConfig, documentDao: DocumentDao, searchService: SearchService)
+  (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport {
 
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   implicit val timeout = config.api.timeout
@@ -34,7 +34,9 @@ class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val acto
   override def search = get {
     path("search") {
       parameter('q) { q =>
-        uncacheable(OK, q)
+        paged(defaultCount = 50) { paged =>
+          onSuccess(searchService.searchByQuery(q)(paged))(uncacheable(_))
+        }
       }
     }
   }
@@ -44,7 +46,7 @@ class RestApi(config: ServiceConfig, documentDao: DocumentDao)(implicit val acto
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
           pathPrefix("magrathea") {
-            getLatestBookById
+            getLatestBookById ~ search
           }
         }
       }

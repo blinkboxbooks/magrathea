@@ -22,7 +22,6 @@ import scala.concurrent.duration.FiniteDuration
 import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
-
 class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
   elasticClient: ElasticClient, indexName: String, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
