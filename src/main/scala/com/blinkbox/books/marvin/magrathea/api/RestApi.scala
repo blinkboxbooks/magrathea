@@ -2,9 +2,11 @@ package com.blinkbox.books.marvin.magrathea.api
 
 import akka.actor.ActorRefFactory
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.ServiceConfig
 import com.blinkbox.books.marvin.magrathea.message.DocumentDao
+import com.blinkbox.books.marvin.magrathea.{SchemaConfig, ServiceConfig}
+import com.blinkbox.books.spray.v1.Error
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
+import org.json4s.JsonAST.JString
 import org.slf4j.LoggerFactory
 import spray.http.HttpHeaders.RawHeader
 import spray.http.StatusCodes._
@@ -15,10 +17,11 @@ import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
   def getLatestBookById: Route
+  def getLatestContributorById: Route
   def search: Route
 }
 
-class RestApi(config: ServiceConfig, documentDao: DocumentDao, searchService: SearchService)
+class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: DocumentDao, searchService: SearchService)
   (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport {
 
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
@@ -27,7 +30,19 @@ class RestApi(config: ServiceConfig, documentDao: DocumentDao, searchService: Se
 
   override def getLatestBookById = get {
     path("books" / Segment) { id =>
-      onSuccess(documentDao.getLatestDocumentById(id))(uncacheable(_))
+      onSuccess(documentDao.getLatestDocumentById(id)) {
+        case Some(doc) if doc \ "$schema" == JString(schemas.book) => uncacheable(doc)
+        case _ => uncacheable(NotFound, Error("not_found", "The requested book was not found."))
+      }
+    }
+  }
+
+  override def getLatestContributorById = get {
+    path("contributors" / Segment) { id =>
+      onSuccess(documentDao.getLatestDocumentById(id)) {
+        case Some(doc) if doc \ "$schema" == JString(schemas.contributor) => uncacheable(doc)
+        case _ => uncacheable(NotFound, Error("not_found", "The requested contributor was not found."))
+      }
     }
   }
 
@@ -45,9 +60,7 @@ class RestApi(config: ServiceConfig, documentDao: DocumentDao, searchService: Se
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          pathPrefix("magrathea") {
-            getLatestBookById ~ search
-          }
+          getLatestBookById ~ getLatestContributorById ~ search
         }
       }
     }

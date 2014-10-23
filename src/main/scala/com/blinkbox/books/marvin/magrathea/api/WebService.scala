@@ -15,10 +15,10 @@ class WebService(config: AppConfig) extends HttpServiceActor {
   val elasticSettings = ImmutableSettings.settingsBuilder().put("cluster.name", config.elasticsearch.cluster).build()
   val elasticClient = ElasticClient.remote(elasticSettings, (config.elasticsearch.host, config.elasticsearch.port))
   val searchService = new DefaultSearchService(elasticClient, config.elasticsearch)
-  val restApi = new RestApi(config.service, documentDao, searchService)
+  val restApi = new RestApi(config.service, config.schemas, documentDao, searchService)
   val healthService = new HealthCheckHttpService {
     override implicit def actorRefFactory = WebService.this.actorRefFactory
-    override val basePath = Path("/")
+    override val basePath = Path./
   }
 
   def receive = runRoute(restApi.routes ~ healthService.routes)
