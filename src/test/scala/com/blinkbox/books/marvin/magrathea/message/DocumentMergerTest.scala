@@ -4,8 +4,7 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator._
 import com.blinkbox.books.marvin.magrathea.message.DocumentMerger._
-import org.joda.time.format.ISODateTimeFormat
-import org.joda.time.{DateTime, DateTimeZone}
+import org.joda.time.DateTime
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -15,32 +14,10 @@ import org.scalatest.{FlatSpecLike, Matchers}
 import spray.httpx.Json4sJacksonSupport
 
 import scala.language.{implicitConversions, postfixOps}
-import scala.util.Random
 
 @RunWith(classOf[JUnitRunner])
-class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers {
+class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers with TestHelper {
   implicit val json4sJacksonFormats = DefaultFormats
-  implicit def dateTime2JValue(d: DateTime) = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
-
-  private def generateId = BigInt(130, Random).toString(16)
-
-  private def sampleBook(extraContent: JValue = JNothing): JValue =
-    ("_id" -> generateId) ~
-    ("$schema" -> "ingestion.book.metadata.v2") ~
-    ("classification" -> List(
-      ("realm" -> "isbn") ~
-      ("id" -> "9780111222333")
-    )) ~
-    ("source" ->
-      ("system" ->
-        ("name" -> "marvin/design_docs") ~
-        ("version" -> "1.0.0")
-      ) ~
-      ("role" -> "publisher_ftp") ~
-      ("username" -> "jp-publishing") ~
-      ("deliveredAt" -> DateTime.now) ~
-      ("processedAt" -> DateTime.now)
-    ) merge extraContent
 
   "The document merger" should "refuse to combine two book documents with different schema" in {
     val bookA = sampleBook(
