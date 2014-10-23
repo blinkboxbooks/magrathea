@@ -17,8 +17,11 @@ import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
   def getLatestBookById: Route
+  def reIndexBook: Route
   def getLatestContributorById: Route
+  def reIndexContributor: Route
   def search: Route
+  def reIndexSearch: Route
 }
 
 class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: DocumentDao, searchService: SearchService)
@@ -28,7 +31,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
   implicit val timeout = config.api.timeout
   implicit val log = LoggerFactory.getLogger(classOf[RestApi])
 
-  override def getLatestBookById = get {
+  override val getLatestBookById = get {
     path("books" / Segment) { id =>
       onSuccess(documentDao.getLatestDocumentById(id)) {
         case Some(doc) if doc \ "$schema" == JString(schemas.book) => uncacheable(doc)
@@ -37,7 +40,13 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     }
   }
 
-  override def getLatestContributorById = get {
+  override val reIndexBook = put {
+    path("books" / Segment / "reindex") { id =>
+      uncacheable(OK, None)
+    }
+  }
+
+  override val getLatestContributorById = get {
     path("contributors" / Segment) { id =>
       onSuccess(documentDao.getLatestDocumentById(id)) {
         case Some(doc) if doc \ "$schema" == JString(schemas.contributor) => uncacheable(doc)
@@ -46,7 +55,13 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     }
   }
 
-  override def search = get {
+  override val reIndexContributor = put {
+    path("contributor" / Segment / "reindex") { id =>
+      uncacheable(OK, None)
+    }
+  }
+
+  override val search = get {
     path("search") {
       parameter('q) { q =>
         paged(defaultCount = 50) { paged =>
@@ -56,11 +71,18 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     }
   }
 
+  override val reIndexSearch = put {
+    path("search/reindex") {
+      uncacheable(OK, None)
+    }
+  }
+
   val routes = rootPath(config.api.localUrl.path) {
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          getLatestBookById ~ getLatestContributorById ~ search
+          getLatestBookById ~ getLatestContributorById ~ search ~
+          reIndexBook ~ reIndexContributor ~ reIndexSearch
         }
       }
     }
