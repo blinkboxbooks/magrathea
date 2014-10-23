@@ -2,43 +2,42 @@
 swagger: "2.0"
 info:
   title: Magrathea API
-  description: blinkbox Books' content management system's API
+  description: blinkbox Books' content management system's API.
   version: 0.0.4
 paths:
   /books/{bookId}:
     get:
-      description: Returns details about a specific book by id
+      description: Returns details about a specific book by id.
       parameters:
         - name: bookId
           in: path
           type: string
           required: true
       produces:
-        - application/vnd.blinkbox.books.ingestion.book.metadata.v2+json
+        - application/vnd.blinkbox.books.v2+json
       responses:
         200:
-          description: The details of the book
+          description: The details of the book.
           schema: schemas/ingestion/book/metadata/v2.schema.json
         404:
-          description: This ID does not have an associated book
+          description: This ID does not have an associated book.
           schema: ErrorStructure
           examples:
-            # TODO: Discuss on #books-api-design
-            application/vnd.blinkbox.books.error.v2+json: |
+            application/vnd.blinkbox.books.v2+json: |
               {
-                "code": "not_found",
-                "message": "The requested book was not found"
+                "code": "NotFound",
+                "message": "The requested book was not found."
               }
   /books/{bookId}/history: {}
 
   /search?q={q}&count={count}&offet={offset}:
     get:
-      description: Search for contributors or books with lucene-style syntax
+      description: Search for contributors or books with lucene-style syntax.
       parameters:
         - name: q
           in: query
           type: string
-          description: The lucene-style query string passed to elasticsearch as a query parameter
+          description: The lucene-style query string passed to elasticsearch as a query parameter.
           required: true
         - name: count
           in: query
@@ -51,15 +50,14 @@ paths:
           minimum: 0
           default: 0
       produces:
-        # TODO: Discuss with api team
-        - application/vnd.blinkbox.books.ingestion.search.results.v2+json
+        - application/vnd.blinkbox.books.v2+json
       responses:
         200:
-          description: Book and Contributor results matching the query given
+          description: Book and Contributor results matching the query given.
           # TODO: Write Schema
           schema: {}
           examples:
-            application/vnd.blinkbox.books.ingestion.search.results.v2+json: |
+            application/vnd.blinkbox.books.v2+json: |
               {
                 "items": [],
                 "lastPage": true
@@ -68,15 +66,14 @@ paths:
           description: No query string or invalid count or offset value.
           schema: ErrorStructure
           examples:
-            # TODO: Discuss on #books-api-design
-            application/vnd.blinkbox.books.error.v2+json: |
+            application/vnd.blinkbox.books.v2+json: |
               {
-                "code": "invalid_parameters",
-                "message": "Query parameter is missing"
+                "code": "InvalidParameters",
+                "message": "Query parameter is missing."
               }
 definitions:
   ErrorStructure:
-    title: A document describing an error response code from the server
+    title: A document describing an error response code from the server.
     type: object
     required:
       - code
