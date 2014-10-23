@@ -7,11 +7,9 @@ import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
-import com.sksamuel.elastic4s.{IndexDefinition, ElasticClient}
+import com.sksamuel.elastic4s.{ElasticClient, IndexDefinition}
 import org.elasticsearch.action.index.IndexResponse
-import org.joda.time.format.ISODateTimeFormat
-import org.joda.time.{DateTime, DateTimeZone}
-import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
+import org.json4s.JsonAST.{JArray, JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
@@ -32,7 +30,6 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   with BeforeAndAfterAll with MockitoSyrup with Matchers with Json4sJacksonSupport with JsonMethods {
 
   implicit val json4sJacksonFormats = DefaultFormats
-  implicit def dateTime2JValue(d: DateTime) = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
   val retryInterval = 100.millis
 
   override protected def afterAll(): Unit = system.shutdown()
@@ -246,7 +243,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     verify(documentDao, times(3)).storeLatestDocument(any[JValue])
   }
 
-  trait TestFixture {
+  trait TestFixture extends TestHelper {
     val config = mock[SchemaConfig]
     doReturn("ingestion.book.metadata.v2").when(config).book
     doReturn("ingestion.contributor.metadata.v2").when(config).contributor
@@ -260,7 +257,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     private val fetchHistoryDocuments = List(sampleBook(), sampleBook(), sampleBook())
     doReturn(Future.successful(fetchHistoryDocuments)).when(documentDao).fetchHistoryDocuments(any[String], any[String])
 
-    doReturn(Future.successful(())).when(documentDao).storeLatestDocument(any[JValue])
+    doReturn(Future.successful("xxx")).when(documentDao).storeLatestDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).storeHistoryDocument(any[JValue])
     doReturn(Future.successful(())).when(documentDao).deleteHistoryDocuments(any[List[(String, String)]])
     doReturn(Future.successful(())).when(documentDao).deleteLatestDocuments(any[List[(String, String)]])
@@ -275,27 +272,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
 
     val handler: ActorRef = TestActorRef(Props(
-      new MessageHandler(config, documentDao, distributor, elasticClient, "", errorHandler, retryInterval)(testMerge)))
-
-    def sampleBook(extraContent: JValue = JNothing): JValue = {
-      ("$schema" -> config.book) ~
-      ("classification" -> List(("realm" -> "isbn") ~ ("id" -> "9780111222333"))) ~
-      ("source" ->
-        ("$remaining" ->
-          ("system" -> ("name" -> "marvin/design_docs") ~ ("version" -> "1.0.0")) ~
-          ("role" -> "publisher_ftp") ~
-          ("username" -> "jp-publishing") ~
-          ("deliveredAt" -> DateTime.now) ~
-          ("processedAt" -> DateTime.now)
-        )
-      ) merge extraContent
-    }
-
-    def lookupKeyMatch(extraContent: JValue = JNothing): JValue = {
-      ("id" -> "7e93a26396bde6994ccefaf3da003659") ~
-      ("key" -> List("whatever-does-not-matter")) ~
-      ("value" -> ("_id" -> "7e93a26396bde6994ccefaf3da003659") ~ ("_rev" -> "1-da5a08470ffe6bca22174a02f5fd5714"))
-    }
+      new MessageHandler(config, documentDao, distributor, elasticClient, "i", errorHandler, retryInterval)(testMerge)))
 
     def bookEvent(json: JValue = JNothing) = {
       implicit object BookJson extends JsonEventBody[JValue] {
