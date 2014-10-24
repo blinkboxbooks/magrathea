@@ -10,7 +10,7 @@ import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.JValue
+import org.json4s.JsonAST.{JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.client.pipelining._
@@ -22,7 +22,7 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait DocumentDao {
-  def getLatestDocumentById(id: String): Future[Option[JValue]]
+  def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def lookupHistoryDocument(key: String): Future[List[JValue]]
   def lookupLatestDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
@@ -47,10 +47,15 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
   private val bookUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/book"))
   private val contributorUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/contributor"))
 
-  override def getLatestDocumentById(id: String): Future[Option[JValue]] = {
+  override def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] = {
     pipeline(Get(latestUri.withPath(latestUri.path ++ Path(s"/$id")))).map {
-      case resp if resp.status == OK => Option(parse(resp.entity.asString)
-        .removeDirectField("_id").removeDirectField("_rev"))
+      case resp if resp.status == OK =>
+        val doc = parse(resp.entity.asString).removeDirectField("_id").removeDirectField("_rev")
+        schema match {
+          case Some(s) if doc \ "$schema" == JString(s) => Some(doc)
+          case None => Some(doc)
+          case _ => None
+        }
       case resp if resp.status == NotFound => None
       case resp => throw new UnsuccessfulResponseException(resp)
     }

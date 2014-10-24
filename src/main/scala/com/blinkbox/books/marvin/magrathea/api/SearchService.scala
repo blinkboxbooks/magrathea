@@ -21,6 +21,8 @@ import scala.concurrent.{ExecutionContext, Future}
 trait SearchService {
   def searchByQuery(query: String)(page: Page): Future[ListPage[JValue]]
   def indexDocument(doc: JValue, docId: String): Future[IndexResponse]
+  def reIndexLatest(): Future[Unit]
+  def reIndexHistory(): Future[Unit]
 }
 
 class DefaultSearchService(elasticClient: ElasticClient, config: ElasticConfig) extends SearchService
@@ -51,4 +53,8 @@ class DefaultSearchService(elasticClient: ElasticClient, config: ElasticConfig) 
   override def indexDocument(doc: JValue, docId: String): Future[IndexResponse] = elasticClient.execute {
     index into s"${config.index}/latest" doc Json4sSource(doc) id docId
   }
+
+  override def reIndexLatest(): Future[Unit] = ???
+
+  override def reIndexHistory(): Future[Unit] = ???
 }
