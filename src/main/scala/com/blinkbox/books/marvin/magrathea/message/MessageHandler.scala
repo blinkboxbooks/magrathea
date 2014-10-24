@@ -5,12 +5,9 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.api.SearchService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
-import com.sksamuel.elastic4s.ElasticClient
-import com.sksamuel.elastic4s.ElasticDsl._
-import com.sksamuel.elastic4s.source.DocumentSource
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -23,17 +20,9 @@ import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
-  elasticClient: ElasticClient, indexName: String, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+  searchService: SearchService, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
-
-  class Json4sSource(root: JValue) extends DocumentSource {
-    def json = compact(render(root))
-  }
-
-  object Json4sSource {
-    def apply(root: JValue) = new Json4sSource(root)
-  }
 
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
@@ -75,12 +64,10 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ <- distributor.sendDistributionInformation(normalisedMergedDoc) zip indexify(normalisedMergedDoc, docId)
   } yield ()
 
-  private def indexify(document: JValue, docId: String): Future[IndexResponse] = {
-    val deAnnotated = DocumentAnnotator.deAnnotate(document).removeDirectField("_id").removeDirectField("_rev")
-    elasticClient.execute {
-      index into s"$indexName/latest" doc Json4sSource(deAnnotated) id docId
-    }
-  }
+  private def indexify(document: JValue, docId: String): Future[Unit] =
+    Future(DocumentAnnotator.deAnnotate(document)).flatMap { deAnnotated =>
+      searchService.indexDocument(deAnnotated.removeDirectField("_id").removeDirectField("_rev"), docId)
+    }.map(_ => ())
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
     logger.debug("Starting document merging...")

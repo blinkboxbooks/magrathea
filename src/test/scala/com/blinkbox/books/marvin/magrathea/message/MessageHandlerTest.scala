@@ -5,9 +5,9 @@ import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.api.SearchService
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
-import com.sksamuel.elastic4s.{ElasticClient, IndexDefinition}
 import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST.{JArray, JNothing, JValue}
 import org.json4s.JsonDSL._
@@ -265,14 +265,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val distributor = mock[DocumentDistributor]
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
 
-    val elasticClient = mock[ElasticClient]
-    doReturn(Future.successful(new IndexResponse())).when(elasticClient).execute(any[IndexDefinition])
+    val searchService = mock[SearchService]
+    doReturn(Future.successful(new IndexResponse())).when(searchService).indexDocument(any[JValue], anyString)
 
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
 
     val handler: ActorRef = TestActorRef(Props(
-      new MessageHandler(config, documentDao, distributor, elasticClient, "i", errorHandler, retryInterval)(testMerge)))
+      new MessageHandler(config, documentDao, distributor, searchService, errorHandler, retryInterval)(testMerge)))
 
     def bookEvent(json: JValue = JNothing) = {
       implicit object BookJson extends JsonEventBody[JValue] {
