@@ -23,6 +23,8 @@ import scala.concurrent.{ExecutionContext, Future}
 
 trait DocumentDao {
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
+  def getAllLatestIds(): Future[List[String]]
+  def getAllHistoryIds(): Future[List[String]]
   def lookupHistoryDocument(key: String): Future[List[JValue]]
   def lookupLatestDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
@@ -60,6 +62,10 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       case resp => throw new UnsuccessfulResponseException(resp)
     }
   }
+
+  override def getAllLatestIds(): Future[List[String]] = getAllDocsFromDatabase(latestUri)
+
+  override def getAllHistoryIds(): Future[List[String]] = getAllDocsFromDatabase(historyUri)
 
   override def lookupHistoryDocument(key: String): Future[List[JValue]] =
     pipeline(Get(lookupHistoryUri.withQuery(("key", key)))).map {
@@ -123,4 +129,11 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       ("_id" -> id) ~ ("_rev" -> rev) ~ ("_deleted" -> true)
     }
   }
+
+  private def getAllDocsFromDatabase(dbUri: Uri): Future[List[String]] =
+    pipeline(Get(dbUri.withPath(dbUri.path ++ Path("/_all_docs")))).map {
+      case resp if resp.status == OK =>
+        (parse(resp.entity.asString) \ "rows").children.map(r => (r \ "id").extract[String])
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
 }
