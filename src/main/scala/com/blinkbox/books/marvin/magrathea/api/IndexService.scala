@@ -3,8 +3,10 @@ package com.blinkbox.books.marvin.magrathea.api
 import java.util.concurrent.Executors
 
 import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.ElasticConfig
+import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao}
 import com.blinkbox.books.spray.Page
 import com.blinkbox.books.spray.v2.ListPage
 import com.sksamuel.elastic4s.ElasticClient
@@ -21,12 +23,13 @@ import scala.concurrent.{ExecutionContext, Future}
 trait IndexService {
   def searchByQuery(query: String)(page: Page): Future[ListPage[JValue]]
   def indexDocument(doc: JValue, docId: String): Future[IndexResponse]
+  def reIndexDocument(docId: String, schema: String): Future[Boolean]
   def reIndexLatest(): Future[Unit]
   def reIndexHistory(): Future[Unit]
 }
 
-class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig) extends IndexService
-  with StrictLogging with Json4sJacksonSupport with JsonMethods {
+class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, documentDao: DocumentDao)
+  extends IndexService with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   class Json4sSource(root: JValue) extends DocumentSource {
     def json = compact(render(root))
@@ -54,7 +57,17 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig) e
     index into s"${config.index}/latest" doc Json4sSource(doc) id docId
   }
 
+  override def reIndexDocument(docId: String, schema: String): Future[Boolean] =
+    documentDao.getLatestDocumentById(docId, Option(schema)).flatMap {
+      case Some(doc) => indexDocument(deAnnotated(doc), docId).map(_ => true)
+      case None => Future.successful(false)
+    }
+
   override def reIndexLatest(): Future[Unit] = ???
 
   override def reIndexHistory(): Future[Unit] = ???
+
+  private def deAnnotated(doc: JValue): JValue =
+    DocumentAnnotator.deAnnotate(doc).removeDirectField("_id").removeDirectField("_rev")
+
 }

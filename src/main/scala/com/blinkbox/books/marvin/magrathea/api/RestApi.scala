@@ -1,20 +1,17 @@
 package com.blinkbox.books.marvin.magrathea.api
 
 import akka.actor.ActorRefFactory
-import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao}
+import com.blinkbox.books.marvin.magrathea.message.DocumentDao
 import com.blinkbox.books.marvin.magrathea.{SchemaConfig, ServiceConfig}
 import com.blinkbox.books.spray.v1.Error
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
-import org.json4s.JsonAST.JValue
 import org.slf4j.LoggerFactory
 import spray.http.HttpHeaders.RawHeader
 import spray.http.StatusCodes._
 import spray.routing._
 import spray.util.LoggingContext
 
-import scala.concurrent.Future
 import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
@@ -45,7 +42,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   override val reIndexBook = put {
     path("books" / Segment / "reindex") { id =>
-      onSuccess(reIndexDocument(id, schemas.book)) { found =>
+      onSuccess(indexService.reIndexDocument(id, schemas.book)) { found =>
         if (found) uncacheable(OK, None)
         else uncacheable(NotFound, Error("not_found", "The requested book was not found."))
       }
@@ -63,7 +60,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   override val reIndexContributor = put {
     path("contributors" / Segment / "reindex") { id =>
-      onSuccess(reIndexDocument(id, schemas.contributor)) { found =>
+      onSuccess(indexService.reIndexDocument(id, schemas.contributor)) { found =>
         if (found) uncacheable(OK, None)
         else uncacheable(NotFound, Error("not_found", "The requested contributor was not found."))
       }
@@ -102,15 +99,6 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
       }
     }
   }
-
-  private def reIndexDocument(id: String, schema: String): Future[Boolean] =
-    documentDao.getLatestDocumentById(id, Option(schema)).flatMap {
-      case Some(doc) => indexService.indexDocument(deAnnotated(doc), id).map(_ => true)
-      case None => Future.successful(false)
-    }
-
-  private def deAnnotated(doc: JValue): JValue =
-    DocumentAnnotator.deAnnotate(doc).removeDirectField("_id").removeDirectField("_rev")
 
   private def exceptionHandler(implicit log: LoggingContext) = ExceptionHandler {
     case NonFatal(e) =>

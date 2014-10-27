@@ -42,7 +42,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   "The service" should "return 200 with the requested book, if it exists" in {
     val book = sampleBook()
-    when(documentDao.getLatestDocumentById(any[String])).thenReturn(Future.successful(Some(book)))
+    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(Some(book)))
     Get("/books/abc") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(book))
@@ -50,7 +50,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the book does not exist" in {
-    when(documentDao.getLatestDocumentById(any[String])).thenReturn(Future.successful(None))
+    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(None))
     Get("/books/oops") ~> routes ~> check {
       status shouldEqual NotFound
     }
@@ -58,7 +58,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   it should "return 200 with the requested contributor, if it exists" in {
     val contributor = sampleContributor()
-    when(documentDao.getLatestDocumentById(any[String])).thenReturn(Future.successful(Some(contributor)))
+    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(Some(contributor)))
     Get("/contributors/abc") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(contributor))
@@ -66,7 +66,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the contributor does not exist" in {
-    when(documentDao.getLatestDocumentById(any[String])).thenReturn(Future.successful(None))
+    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(None))
     Get("/contributors/oops") ~> routes ~> check {
       status shouldEqual NotFound
     }
