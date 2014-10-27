@@ -21,9 +21,12 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 trait IndexService {
-  def searchByQuery(query: String)(page: Page): Future[ListPage[JValue]]
-  def indexDocument(doc: JValue, docId: String): Future[IndexResponse]
-  def reIndexDocument(docId: String, schema: String): Future[Boolean]
+  def searchInLatest(query: String)(page: Page): Future[ListPage[JValue]]
+  def searchInHistory(query: String)(page: Page): Future[ListPage[JValue]]
+  def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse]
+  def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse]
+  def reIndexLatestDocument(docId: String, schema: String): Future[Boolean]
+  def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean]
   def reIndexLatest(): Future[Unit]
   def reIndexHistory(): Future[Unit]
 }
@@ -44,30 +47,49 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
 
   elasticClient.execute { create index config.index }
 
-  override def searchByQuery(queryText: String)(page: Page): Future[ListPage[JValue]] =
+  override def searchInLatest(queryText: String)(page: Page): Future[ListPage[JValue]] =
+    searchDocument(queryText, "latest")(page)
+
+  override def searchInHistory(queryText: String)(page: Page): Future[ListPage[JValue]] =
+    searchDocument(queryText, "history")(page)
+
+  override def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse] =
+    indexDocument(doc, docId, "latest")
+
+  override def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse] =
+    indexDocument(doc, docId, "history")
+
+  override def reIndexLatestDocument(docId: String, schema: String): Future[Boolean] =
+    reIndexDocument(docId, "latest", schema)(documentDao.getLatestDocumentById)
+
+  override def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean] =
+    reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
+
+  override def reIndexLatest(): Future[Unit] = ???
+
+  override def reIndexHistory(): Future[Unit] = ???
+
+  private def searchDocument(queryText: String, docType: String)(page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
-      search in s"${config.index}/latest" query queryText start page.offset limit page.count
+      search in s"${config.index}/$docType" query queryText start page.offset limit page.count
     } map { resp =>
       val lastPage = (page.offset + page.count) >= resp.getHits.totalHits()
       val hits = resp.getHits.hits().map(hit => parse(hit.getSourceAsString)).toList
       ListPage(hits, lastPage)
     }
 
-  override def indexDocument(doc: JValue, docId: String): Future[IndexResponse] = elasticClient.execute {
-    index into s"${config.index}/latest" doc Json4sSource(doc) id docId
-  }
+  private def indexDocument(doc: JValue, docId: String, docType: String): Future[IndexResponse] =
+    elasticClient.execute {
+      index into s"${config.index}/$docType" doc Json4sSource(clean(doc)) id docId
+    }
 
-  override def reIndexDocument(docId: String, schema: String): Future[Boolean] =
-    documentDao.getLatestDocumentById(docId, Option(schema)).flatMap {
-      case Some(doc) => indexDocument(deAnnotated(doc), docId).map(_ => true)
+  private def reIndexDocument(docId: String, docType: String, schema: String)
+    (f: => (String, Option[String]) => Future[Option[JValue]]): Future[Boolean] = f(docId, Option(schema)).flatMap {
+      case Some(doc) => indexDocument(deAnnotated(doc), docId, docType).map(_ => true)
       case None => Future.successful(false)
     }
 
-  override def reIndexLatest(): Future[Unit] = ???
+  private def deAnnotated(doc: JValue): JValue = DocumentAnnotator.deAnnotate(doc)
 
-  override def reIndexHistory(): Future[Unit] = ???
-
-  private def deAnnotated(doc: JValue): JValue =
-    DocumentAnnotator.deAnnotate(doc).removeDirectField("_id").removeDirectField("_rev")
-
+  private def clean(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
 }

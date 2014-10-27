@@ -66,7 +66,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
 
   private def indexify(document: JValue, docId: String): Future[Unit] =
     Future(DocumentAnnotator.deAnnotate(document)).flatMap { deAnnotated =>
-      indexService.indexDocument(deAnnotated.removeDirectField("_id").removeDirectField("_rev"), docId)
+      indexService.indexLatestDocument(deAnnotated, docId)
     }.map(_ => ())
 
   private def mergeDocuments(documents: List[JValue]): JValue = {

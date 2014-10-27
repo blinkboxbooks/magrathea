@@ -266,7 +266,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
 
     val indexService = mock[IndexService]
-    doReturn(Future.successful(new IndexResponse())).when(indexService).indexDocument(any[JValue], anyString)
+    doReturn(Future.successful(new IndexResponse())).when(indexService).indexLatestDocument(any[JValue], anyString)
 
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])

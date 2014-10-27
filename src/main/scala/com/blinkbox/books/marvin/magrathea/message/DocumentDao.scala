@@ -22,16 +22,17 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait DocumentDao {
+  def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getAllLatestIds(): Future[List[String]]
   def getAllHistoryIds(): Future[List[String]]
-  def lookupHistoryDocument(key: String): Future[List[JValue]]
   def lookupLatestDocument(key: String): Future[List[JValue]]
+  def lookupHistoryDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
-  def storeHistoryDocument(document: JValue): Future[Unit]
   def storeLatestDocument(document: JValue): Future[String]
-  def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
+  def storeHistoryDocument(document: JValue): Future[Unit]
   def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
+  def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
 class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
@@ -49,8 +50,58 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
   private val bookUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/book"))
   private val contributorUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/contributor"))
 
-  override def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] = {
-    pipeline(Get(latestUri.withPath(latestUri.path ++ Path(s"/$id")))).map {
+  override def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] =
+    getDocumentById(id, schema, lookupLatestUri)
+
+  override def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] =
+    getDocumentById(id, schema, lookupHistoryUri)
+
+  override def getAllLatestIds(): Future[List[String]] = getAllDocsFromDatabase(latestUri)
+
+  override def getAllHistoryIds(): Future[List[String]] = getAllDocsFromDatabase(historyUri)
+
+  override def lookupLatestDocument(key: String): Future[List[JValue]] = lookupDocument(key, latestUri)
+
+  override def lookupHistoryDocument(key: String): Future[List[JValue]] = lookupDocument(key, historyUri)
+
+  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] =
+    getHistoryFetchUri(schema, key).flatMap { uri =>
+      pipeline(Get(uri)).map {
+        case resp if resp.status == OK => (parse(resp.entity.asString) \ "rows").children.map(_ \ "value")
+        case resp => throw new UnsuccessfulResponseException(resp)
+      }
+    }
+
+  override def storeLatestDocument(document: JValue): Future[String] =
+    storeDocument(document, latestUri) { data =>
+      val docId = (parse(data) \ "id").extract[String]
+      logger.info("Stored merged document with id: {}", docId)
+      docId
+    }
+
+  override def storeHistoryDocument(document: JValue): Future[Unit] =
+    storeDocument(document, historyUri) { data =>
+      logger.debug("Stored history document")
+    }
+
+  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] =
+    deleteDocuments(documents, deleteLatestUri) {
+      logger.debug("Deleted latest documents: {}", documents)
+    }
+
+  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] =
+    deleteDocuments(documents, deleteHistoryUri) {
+      logger.debug("Deleted history documents: {}", documents)
+    }
+
+  private def getHistoryFetchUri(schema: String, key: String): Future[Uri] = Future {
+    if (schema == schemas.book) bookUri.withQuery(("key", key))
+    else if (schema == schemas.contributor) contributorUri.withQuery(("key", key))
+    else throw new IllegalArgumentException(s"Unsupported schema: $schema")
+  }
+
+  private def getDocumentById(id: String, schema: Option[String] = None, uri: Uri): Future[Option[JValue]] =
+    pipeline(Get(uri.withPath(uri.path ++ Path(s"/$id")))).map {
       case resp if resp.status == OK =>
         val doc = parse(resp.entity.asString).removeDirectField("_id").removeDirectField("_rev")
         schema match {
@@ -61,68 +112,25 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       case resp if resp.status == NotFound => None
       case resp => throw new UnsuccessfulResponseException(resp)
     }
-  }
 
-  override def getAllLatestIds(): Future[List[String]] = getAllDocsFromDatabase(latestUri)
+  private def getAllDocsFromDatabase(uri: Uri): Future[List[String]] =
+    pipeline(Get(uri.withPath(uri.path ++ Path("/_all_docs")))).map {
+      case resp if resp.status == OK =>
+        (parse(resp.entity.asString) \ "rows").children.map(r => (r \ "id").extract[String])
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
 
-  override def getAllHistoryIds(): Future[List[String]] = getAllDocsFromDatabase(historyUri)
-
-  override def lookupHistoryDocument(key: String): Future[List[JValue]] =
-    pipeline(Get(lookupHistoryUri.withQuery(("key", key)))).map {
+  private def lookupDocument(key: String, uri: Uri): Future[List[JValue]] =
+    pipeline(Get(uri.withQuery(("key", key)))).map {
       case resp if resp.status == OK => (parse(resp.entity.asString) \ "rows").children
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
-  override def lookupLatestDocument(key: String): Future[List[JValue]] =
-    pipeline(Get(lookupLatestUri.withQuery(("key", key)))).map {
-      case resp if resp.status == OK => (parse(resp.entity.asString) \ "rows").children
+  private def storeDocument[T](document: JValue, uri: Uri)(f: => String => T): Future[T] =
+    pipeline(Post(uri, document)).map {
+      case resp if resp.status == Created => f(resp.entity.asString)
       case resp => throw new UnsuccessfulResponseException(resp)
     }
-
-  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] =
-    getHistoryFetchUri(schema, key).flatMap { uri =>
-      pipeline(Get(uri)).map {
-        case resp if resp.status == OK => (parse(resp.entity.asString) \ "rows").children.map(_ \ "value")
-        case resp => throw new UnsuccessfulResponseException(resp)
-      }
-    }
-
-  override def storeHistoryDocument(document: JValue): Future[Unit] =
-    pipeline(Post(historyUri, document)).map {
-      case resp if resp.status == Created => logger.debug("Stored history document")
-      case resp => throw new UnsuccessfulResponseException(resp)
-    }
-
-  override def storeLatestDocument(document: JValue): Future[String] =
-    pipeline(Post(latestUri, document)).map {
-      case resp if resp.status == Created =>
-        val docId = (parse(resp.entity.asString) \ "id").extract[String]
-        logger.info("Stored merged document with id: {}", docId)
-        docId
-      case resp => throw new UnsuccessfulResponseException(resp)
-    }
-
-  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] =
-    getDeleteJson(documents).flatMap { json =>
-      pipeline(Post(deleteHistoryUri, json)).map {
-        case resp if resp.status == Created => logger.debug("Deleted history documents: {}", documents)
-        case resp => throw new UnsuccessfulResponseException(resp)
-      }
-    }
-
-  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] =
-    getDeleteJson(documents).flatMap { json =>
-      pipeline(Post(deleteLatestUri, json)).map {
-        case resp if resp.status == Created => logger.debug("Deleted latest documents: {}", documents)
-        case resp => throw new UnsuccessfulResponseException(resp)
-      }
-    }
-
-  private def getHistoryFetchUri(schema: String, key: String): Future[Uri] = Future {
-    if (schema == schemas.book) bookUri.withQuery(("key", key))
-    else if (schema == schemas.contributor) contributorUri.withQuery(("key", key))
-    else throw new IllegalArgumentException(s"Unsupported schema: $schema")
-  }
 
   private def getDeleteJson(documents: List[(String, String)]): Future[JValue] = Future {
     "docs" -> documents.map { case (id, rev) =>
@@ -130,10 +138,11 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
     }
   }
 
-  private def getAllDocsFromDatabase(dbUri: Uri): Future[List[String]] =
-    pipeline(Get(dbUri.withPath(dbUri.path ++ Path("/_all_docs")))).map {
-      case resp if resp.status == OK =>
-        (parse(resp.entity.asString) \ "rows").children.map(r => (r \ "id").extract[String])
-      case resp => throw new UnsuccessfulResponseException(resp)
+  private def deleteDocuments(documents: List[(String, String)], uri: Uri)(f: => Unit): Future[Unit] =
+    getDeleteJson(documents).flatMap { json =>
+      pipeline(Post(uri, json)).map {
+        case resp if resp.status == Created => f
+        case resp => throw new UnsuccessfulResponseException(resp)
+      }
     }
 }

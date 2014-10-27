@@ -42,7 +42,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   override val reIndexBook = put {
     path("books" / Segment / "reindex") { id =>
-      onSuccess(indexService.reIndexDocument(id, schemas.book)) { found =>
+      onSuccess(indexService.reIndexLatestDocument(id, schemas.book)) { found =>
         if (found) uncacheable(OK, None)
         else uncacheable(NotFound, Error("not_found", "The requested book was not found."))
       }
@@ -60,7 +60,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   override val reIndexContributor = put {
     path("contributors" / Segment / "reindex") { id =>
-      onSuccess(indexService.reIndexDocument(id, schemas.contributor)) { found =>
+      onSuccess(indexService.reIndexLatestDocument(id, schemas.contributor)) { found =>
         if (found) uncacheable(OK, None)
         else uncacheable(NotFound, Error("not_found", "The requested contributor was not found."))
       }
@@ -71,7 +71,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("search") {
       parameter('q) { q =>
         paged(defaultCount = 50) { paged =>
-          onSuccess(indexService.searchByQuery(q)(paged))(uncacheable(_))
+          onSuccess(indexService.searchInLatest(q)(paged))(uncacheable(_))
         }
       }
     }
