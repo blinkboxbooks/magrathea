@@ -7,10 +7,10 @@ import com.blinkbox.books.spray.HealthCheckHttpService
 import spray.http.Uri.Path
 import spray.routing.HttpServiceActor
 
-class WebService(config: AppConfig, searchService: SearchService) extends HttpServiceActor {
+class WebService(config: AppConfig, indexService: IndexService) extends HttpServiceActor {
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(context.system)
-  val restApi = new RestApi(config.service, config.schemas, documentDao, searchService)
+  val restApi = new RestApi(config.service, config.schemas, documentDao, indexService)
   val healthService = new HealthCheckHttpService {
     override implicit def actorRefFactory = WebService.this.actorRefFactory
     override val basePath = Path./

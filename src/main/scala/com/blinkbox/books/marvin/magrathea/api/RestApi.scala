@@ -27,7 +27,7 @@ trait RestRoutes extends HttpService {
   def reIndexHistorySearch: Route
 }
 
-class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: DocumentDao, searchService: SearchService)
+class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: DocumentDao, indexService: IndexService)
   (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport {
 
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
@@ -74,7 +74,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("search") {
       parameter('q) { q =>
         paged(defaultCount = 50) { paged =>
-          onSuccess(searchService.searchByQuery(q)(paged))(uncacheable(_))
+          onSuccess(indexService.searchByQuery(q)(paged))(uncacheable(_))
         }
       }
     }
@@ -105,7 +105,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   private def reIndexDocument(id: String, schema: String): Future[Boolean] =
     documentDao.getLatestDocumentById(id, Option(schema)).flatMap {
-      case Some(doc) => searchService.indexDocument(deAnnotated(doc), id).map(_ => true)
+      case Some(doc) => indexService.indexDocument(deAnnotated(doc), id).map(_ => true)
       case None => Future.successful(false)
     }
 

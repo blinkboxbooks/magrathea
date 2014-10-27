@@ -3,7 +3,7 @@ package com.blinkbox.books.marvin.magrathea.message
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.util.Timeout
 import com.blinkbox.books.marvin.magrathea.AppConfig
-import com.blinkbox.books.marvin.magrathea.api.SearchService
+import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.ActorErrorHandler
 import com.blinkbox.books.rabbitmq.RabbitMqConfirmedPublisher.PublisherConfiguration
 import com.blinkbox.books.rabbitmq.RabbitMqConsumer.QueueConfiguration
@@ -11,7 +11,7 @@ import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, Rabbit
 
 import scala.concurrent.ExecutionContext
 
-class MessageListener(config: AppConfig, searchService: SearchService)
+class MessageListener(config: AppConfig, indexService: IndexService)
   (implicit system: ActorSystem, ex: ExecutionContext, timeout: Timeout) {
   val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
   val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
@@ -21,7 +21,7 @@ class MessageListener(config: AppConfig, searchService: SearchService)
 
   val messageErrorHandler = errorHandler("message-error", config.listener.error)
   val messageHandler = system.actorOf(Props(new MessageHandler(config.schemas, documentDao,
-    distributor, searchService, messageErrorHandler, config.listener.retryInterval)
+    distributor, indexService, messageErrorHandler, config.listener.retryInterval)
     (DocumentMerger.merge)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.listener.input, messageHandler)
 

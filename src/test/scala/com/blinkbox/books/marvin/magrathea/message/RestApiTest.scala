@@ -3,7 +3,7 @@ package com.blinkbox.books.marvin.magrathea.message
 import java.net.URL
 
 import com.blinkbox.books.config.ApiConfig
-import com.blinkbox.books.marvin.magrathea.api.{RestApi, SearchService}
+import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
 import com.blinkbox.books.marvin.magrathea.{SchemaConfig, ServiceConfig}
 import com.blinkbox.books.spray.v2
 import com.blinkbox.books.test.MockitoSyrup
@@ -35,10 +35,10 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   val schemas = mock[SchemaConfig]
   when(schemas.book).thenReturn("ingestion.book.metadata.v2")
   when(schemas.contributor).thenReturn("ingestion.contributor.metadata.v2")
-  val searchService = mock[SearchService]
+  val indexService = mock[IndexService]
 
   val documentDao = mock[DocumentDao]
-  val routes = new RestApi(config, schemas, documentDao, searchService).routes
+  val routes = new RestApi(config, schemas, documentDao, indexService).routes
 
   "The service" should "return 200 with the requested book, if it exists" in {
     val book = sampleBook()

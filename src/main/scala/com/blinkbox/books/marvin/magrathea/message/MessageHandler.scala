@@ -5,7 +5,7 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
-import com.blinkbox.books.marvin.magrathea.api.SearchService
+import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST._
@@ -20,7 +20,7 @@ import scala.concurrent.{Future, TimeoutException}
 import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
-  searchService: SearchService, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
+  indexService: IndexService, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
   (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
@@ -66,7 +66,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
 
   private def indexify(document: JValue, docId: String): Future[Unit] =
     Future(DocumentAnnotator.deAnnotate(document)).flatMap { deAnnotated =>
-      searchService.indexDocument(deAnnotated.removeDirectField("_id").removeDirectField("_rev"), docId)
+      indexService.indexDocument(deAnnotated.removeDirectField("_id").removeDirectField("_rev"), docId)
     }.map(_ => ())
 
   private def mergeDocuments(documents: List[JValue]): JValue = {

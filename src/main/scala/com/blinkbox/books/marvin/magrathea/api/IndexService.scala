@@ -18,14 +18,14 @@ import spray.httpx.Json4sJacksonSupport
 
 import scala.concurrent.{ExecutionContext, Future}
 
-trait SearchService {
+trait IndexService {
   def searchByQuery(query: String)(page: Page): Future[ListPage[JValue]]
   def indexDocument(doc: JValue, docId: String): Future[IndexResponse]
   def reIndexLatest(): Future[Unit]
   def reIndexHistory(): Future[Unit]
 }
 
-class DefaultSearchService(elasticClient: ElasticClient, config: ElasticConfig) extends SearchService
+class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig) extends IndexService
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   class Json4sSource(root: JValue) extends DocumentSource {
