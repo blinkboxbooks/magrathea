@@ -27,7 +27,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   implicit val timeout = Timeout(retryInterval)
   implicit val json4sJacksonFormats = DefaultFormats
 
-  override protected def handleEvent(event: Event, originalSender: ActorRef): Future[Unit] = for {
+  override protected def handleEvent(event: Event, originalSender: ActorRef): Future[Unit] = timeTaken(for {
     incomingDoc <- parseDocument(event.body.asString())
     historyLookupKey = extractHistoryLookupKey(incomingDoc)
     historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
@@ -36,13 +36,20 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
     (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
     _ <- mergeStoreDistribute(schema, classification) zip contributorMerge(normalisedIncomingDoc)
-  } yield ()
+  } yield ())
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
   @tailrec
   final override protected def isTemporaryFailure(e: Throwable): Boolean =
     e.isInstanceOf[TimeoutException] || e.isInstanceOf[ConnectionException] ||
     Option(e.getCause).isDefined && isTemporaryFailure(e.getCause)
+
+  private def timeTaken[T](block: => Future[T]): Future[T] = for {
+    t0 <- Future.successful(System.currentTimeMillis())
+    res <- block
+    t1 = System.currentTimeMillis()
+    _ = logger.info(s"Elapsed time to handle document: ${t1 - t0}ms")
+  } yield res
 
   private def contributorMerge(document: JValue): Future[Unit] = document \ "contributors" match {
     case JArray(arr) =>
