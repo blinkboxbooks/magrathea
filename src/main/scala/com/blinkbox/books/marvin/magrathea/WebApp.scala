@@ -5,7 +5,7 @@ import akka.util.Timeout
 import com.blinkbox.books.config.Configuration
 import com.blinkbox.books.logging.{DiagnosticExecutionContext, Loggers}
 import com.blinkbox.books.marvin.magrathea.api.{DefaultIndexService, WebService}
-import com.blinkbox.books.marvin.magrathea.message.{DefaultDocumentDao, MessageListener}
+import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, CouchDocumentDao, MessageListener}
 import com.blinkbox.books.spray._
 import com.sksamuel.elastic4s.ElasticClient
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -25,7 +25,7 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     val apiExCtx = DiagnosticExecutionContext(apiSystem.dispatcher)
     val apiTimeout = Timeout(appConfig.service.api.timeout)
     sys.addShutdownHook(apiSystem.shutdown())
-    val apiDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(apiSystem)
+    val apiDocumentDao = documentDao(appConfig, apiSystem)
     val apiIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, apiDocumentDao)
     val service = apiSystem.actorOf(Props(classOf[WebService], appConfig, apiDocumentDao, apiIndexService), "magrathea-api")
     val localUrl = appConfig.service.api.localUrl
@@ -35,7 +35,7 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     val msgExCtx = DiagnosticExecutionContext(msgSystem.dispatcher)
     val msgTimeout = Timeout(appConfig.listener.actorTimeout)
     sys.addShutdownHook(msgSystem.shutdown())
-    val msgDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(apiSystem)
+    val msgDocumentDao = documentDao(appConfig, apiSystem)
     val msgIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, msgDocumentDao)
     val messageListener = new MessageListener(appConfig, msgIndexService)(msgSystem, msgExCtx, msgTimeout)
     messageListener.start()
@@ -44,5 +44,9 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     case ex: Throwable =>
       logger.error("Error during initialisation of the service", ex)
       System.exit(1)
+  }
+
+  private def documentDao(config: AppConfig, system: ActorSystem): DocumentDao = {
+    new CouchDocumentDao(config.couchDbUrl, config.schemas)(system)
   }
 }

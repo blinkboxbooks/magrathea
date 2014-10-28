@@ -16,7 +16,7 @@ class MessageListener(config: AppConfig, indexService: IndexService)
   val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
   val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
 
-  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(system)
+  val documentDao = new CouchDocumentDao(config.couchDbUrl, config.schemas)(system)
   val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
 
   val messageErrorHandler = errorHandler("message-error", config.listener.error)
