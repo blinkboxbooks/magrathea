@@ -4,12 +4,14 @@ import java.net.URL
 import java.util.concurrent.Executors
 
 import akka.actor.ActorSystem
+import com.blinkbox.books.config.DatabaseConfig
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
+import org.json4s.Formats
 import org.json4s.JsonAST.{JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -22,8 +24,8 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 import scala.concurrent.{ExecutionContext, Future}
 
 trait DocumentDao {
-  def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
+  def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getLatestDocumentCount(): Future[Int]
   def getHistoryDocumentCount(): Future[Int]
   def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]]
@@ -37,11 +39,39 @@ trait DocumentDao {
   def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
-class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
+class PostgresDocumentDao(config: DatabaseConfig) extends DocumentDao
+  with Json4sJacksonSupport with JsonMethods with StrictLogging {
+
+  override implicit val json4sJacksonFormats = DefaultFormats
+
+  override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = ???
+
+  override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = ???
+
+  override def getAllLatestIds(): Future[List[String]] = ???
+
+  override def getAllHistoryIds(): Future[List[String]] = ???
+
+  override def lookupLatestDocument(key: String): Future[List[JValue]] = ???
+
+  override def lookupHistoryDocument(key: String): Future[List[JValue]] = ???
+
+  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = ???
+
+  override def storeLatestDocument(document: JValue): Future[String] = ???
+
+  override def storeHistoryDocument(document: JValue): Future[Unit] = ???
+
+  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] = ???
+
+  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] = ???
+}
+
+class CouchDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
   extends DocumentDao with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
+  override implicit val json4sJacksonFormats = DefaultFormats
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-  implicit val json4sJacksonFormats = DefaultFormats
   private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
   private val historyUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history"))
   private val latestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest"))
