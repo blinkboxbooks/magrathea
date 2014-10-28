@@ -65,9 +65,25 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean] =
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
-  override def reIndexLatest(): Future[Unit] = ???
+  override def reIndexLatest(): Future[Unit] = {
+    documentDao.getAllLatestIds().map { ids =>
+      ids.grouped(50).map { group =>
+        Future {
+          // TODO: fetch start to end and index
+        }
+      }
+    }
+  }
 
-  override def reIndexHistory(): Future[Unit] = ???
+  override def reIndexHistory(): Future[Unit] = {
+    documentDao.getAllHistoryIds().map { ids =>
+      ids.grouped(50).map { group =>
+        Future {
+          // TODO: fetch start to end and index
+        }
+      }
+    }
+  }
 
   private def searchDocument(queryText: String, docType: String)(page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
