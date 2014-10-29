@@ -12,7 +12,7 @@ import com.typesafe.config.Config
 import scala.concurrent.duration._
 
 case class AppConfig(service: ServiceConfig, listener: ListenerConfig,
-  couchDbUrl: URL, elasticsearch: ElasticConfig, schemas: SchemaConfig)
+  couchDbUrl: URL, elasticsearch: ElasticConfig, schemas: SchemaConfig, db: DatabaseConfig)
 case class ServiceConfig(api: ApiConfig)
 case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
   distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
@@ -31,7 +31,8 @@ object AppConfig {
     ListenerConfig(config, s"$prefix.messageListener"),
     config.getHttpUrl(s"$prefix.couchdb.url"),
     ElasticConfig(config, s"$prefix.elasticsearch"),
-    SchemaConfig(config, s"$prefix.schema")
+    SchemaConfig(config, s"$prefix.schema"),
+    DatabaseConfig(config, s"$prefix.db")
   )
 }
 

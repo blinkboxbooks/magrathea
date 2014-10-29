@@ -1,6 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import java.net.URL
+import java.util.UUID
 import java.util.concurrent.Executors
 
 import akka.actor.ActorSystem
@@ -9,9 +10,9 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.message.Postgres._
 import com.blinkbox.books.spray._
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.Formats
 import org.json4s.JsonAST.{JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -22,6 +23,8 @@ import spray.http.{HttpRequest, HttpResponse, Uri}
 import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.language.reflectiveCalls
+import scala.slick.jdbc.{GetResult, StaticQuery => Q}
 
 trait DocumentDao {
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
@@ -37,39 +40,211 @@ trait DocumentDao {
   def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
-class PostgresDocumentDao(config: DatabaseConfig) extends DocumentDao
+object Postgres {
+  import com.github.tminglei.slickpg._
+
+import scala.slick.driver.PostgresDriver
+
+  object MyPostgresDriver extends PostgresDriver with PgJson4sSupport with array.PgArrayJdbcTypes {
+    type DOCType = JValue
+    override val jsonMethods = org.json4s.jackson.JsonMethods
+    override lazy val Implicit = new Implicits with JsonImplicits
+    override val simple = new Implicits with SimpleQL with JsonImplicits {
+      implicit val strListTypeMapper = new SimpleArrayListJdbcType[String]("text")
+    }
+  }
+
+  import com.blinkbox.books.marvin.magrathea.message.Postgres.MyPostgresDriver.simple._
+
+  case class History(id: UUID, doc: JValue, key: String)
+  case class Latest(id: UUID, doc: JValue)
+
+  class HistoryTable(tag: Tag) extends Table[History](tag, "history") {
+    def id = column[UUID]("id", O.PrimaryKey)
+    def doc = column[JValue]("doc")
+    def key = column[String]("key")
+    def * = (id, doc, key) <> (History.tupled, History.unapply)
+  }
+
+  class LatestTable(tag: Tag) extends Table[Latest](tag, "latest") {
+    def id = column[UUID]("id", O.PrimaryKey)
+    def doc = column[JValue]("doc")
+    def * = (id, doc) <> (Latest.tupled, Latest.unapply)
+  }
+}
+
+class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends DocumentDao
   with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
+  import com.blinkbox.books.marvin.magrathea.message.Postgres.MyPostgresDriver.simple._
+
   override implicit val json4sJacksonFormats = DefaultFormats
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  private val db = Database.forURL(config.jdbcUrl, user = config.user, password = config.pass)
+  db.createConnection().close()
 
-  override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = ???
+  val HistoryRepo = TableQuery[HistoryTable]
+  val LatestRepo = TableQuery[LatestTable]
 
-  override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = ???
+  override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
+    db.withSession { implicit session =>
+      val uuid = UUID.fromString(id)
+      val doc = LatestRepo.filter(_.id === uuid).map(_.doc).firstOption
+      (schema, doc) match {
+        case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
+        case (None, _) => doc
+        case _ => None
+      }
+    }
+  }
 
-  override def getAllLatestIds(): Future[List[String]] = ???
-  
-  override def getAllHistoryIds(): Future[List[String]] = ???
+  override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
+    db.withSession { implicit session =>
+      val uuid = UUID.fromString(id)
+      val doc = HistoryRepo.filter(_.id === uuid).map(_.doc).firstOption
+      (schema, doc) match {
+        case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
+        case (None, _) => doc
+        case _ => None
+      }
+    }
+  }
 
-  override def lookupLatestDocument(key: String): Future[List[JValue]] = ???
+  override def getAllLatestIds(): Future[List[String]] = Future {
+    db.withSession { implicit session =>
+      ???
+    }
+  }
 
-  override def lookupHistoryDocument(key: String): Future[List[JValue]] = ???
+  override def getAllHistoryIds(): Future[List[String]] = Future {
+    db.withSession { implicit session =>
+      ???
+    }
+  }
 
-  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = ???
+  private def addIdRev(id: UUID): JValue = "value" -> ("_id" -> id.toString) ~ ("_rev" -> id.toString)
+  private def contribufy(doc: JValue, source: JValue, schema: String): JValue = {
+    val schemaField: JValue = "$schema" -> schema
+    val sourceField: JValue = "source" -> source
+    schemaField merge doc.removeDirectField("role") merge sourceField
+  }
 
-  override def storeLatestDocument(document: JValue): Future[String] = ???
-  
-  override def storeHistoryDocument(document: JValue): Future[Unit] = ???
+  override def lookupLatestDocument(key: String): Future[List[JValue]] = Future {
+    db.withSession { implicit session =>
+      val json = parse(key)
+      val schema = json.children(0).extract[String]
+      val classification = json.children(1)
+      LatestRepo
+        .filter(_.doc.+>>("$schema") === schema)
+        .filter(_.doc.+>>("classification") === compact(classification))
+        .map(_.id)
+        .list
+        .map(addIdRev)
+    }
+  }
 
-  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] = ???
-  
-  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] = ???
+  override def lookupHistoryDocument(key: String): Future[List[JValue]] = Future {
+    db.withSession { implicit session =>
+      val jsonKey = parse(key).sha1
+      HistoryRepo
+        .filter(_.key === jsonKey)
+        .map(_.id)
+        .list
+        .map(addIdRev)
+    }
+  }
+
+  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = Future {
+    db.withSession { implicit session =>
+      val classification = key
+      if (schema == schemas.book) {
+        // books
+        HistoryRepo
+          .filter(_.doc.+>>("$schema") === schema)
+          .filter(_.doc.+>>("classification") === classification)
+          .map(_.doc).list
+      } else {
+        // contributors
+        implicit val getJValueResult = GetResult(r => parse(r.nextString()))
+        val contributorDocs = HistoryRepo
+          .filter(_.doc.+>>("$schema") === schema)
+          .filter(_.doc.+>>("classification") === classification)
+          .map(_.doc).list
+        val contributorFromBooks = Q.queryNA[(JValue, JValue)](
+          s"""
+            |select contributors.value as contributor, source
+            |from
+            |  history,
+            |  json_array_elements(json_extract_path(history.doc, 'contributors')) as contributors,
+            |  json_extract_path(history.doc, 'source') as source
+            |where
+            |  doc->>'$$schema' = '${schemas.book}' and
+            |  contributors.value->>'classification' = '$classification';
+          """.stripMargin).list.map {
+            case (contributor, source) => contribufy(contributor, source, schemas.contributor)
+          }
+        contributorDocs ++ contributorFromBooks
+      }
+    }
+  }
+
+  override def storeLatestDocument(document: JValue): Future[String] = Future {
+    db.withSession { implicit session =>
+      document \ "_id" match {
+        case JString(id) =>
+          val docId = UUID.fromString(id)
+          val latest = Latest(docId, document.removeDirectField("_id").removeDirectField("_rev"))
+          LatestRepo.filter(_.id === docId).update(latest)
+          id
+        case _ =>
+          val docId = UUID.randomUUID()
+          val latest = Latest(docId, document.removeDirectField("_id").removeDirectField("_rev"))
+          LatestRepo.returning(LatestRepo.map(_.id)).insert(latest).toString
+      }
+    }
+  }
+
+  override def storeHistoryDocument(document: JValue): Future[Unit] = Future {
+    db.withSession { implicit session =>
+      val schema = document \ "$schema"
+      val source = (document \ "source")
+        .removeDirectField("processedAt")
+        .remove(_ == document \ "source" \ "system" \ "version")
+      val classification = document \ "classification"
+      val key = render(List(schema, source, classification))
+      document \ "_id" match {
+        case JString(id) =>
+          val docId = UUID.fromString(id)
+          val history = History(docId, document.removeDirectField("_id").removeDirectField("_rev"), key.sha1)
+          HistoryRepo.filter(_.id === docId).update(history)
+        case _ =>
+          val docId = UUID.randomUUID()
+          val history = History(docId, document.removeDirectField("_id").removeDirectField("_rev"), key.sha1)
+          HistoryRepo.insert(history)
+      }
+    }
+  }
+
+  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] = Future {
+    db.withSession { implicit session =>
+      val ids = documents.map(x => UUID.fromString(x._1))
+      LatestRepo.filter(_.id inSet ids).delete
+    }
+  }
+
+  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] = Future {
+    db.withSession { implicit session =>
+      val ids = documents.map(x => UUID.fromString(x._1))
+      HistoryRepo.filter(_.id inSet ids).delete
+    }
+  }
 }
 
 class CouchDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
   extends DocumentDao with Json4sJacksonSupport with JsonMethods with StrictLogging {
 
   override implicit val json4sJacksonFormats = DefaultFormats
-  implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   private val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
   private val historyUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/history"))
   private val latestUri = couchDbUrl.withPath(couchDbUrl.path ++ Path("/latest"))

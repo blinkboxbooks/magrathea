@@ -21,7 +21,9 @@ libraryDependencies ++= {
     "com.blinkbox.books"        %% "common-spray-auth" % "0.7.1",
     "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "7.1.0",
     "com.sksamuel.elastic4s"    %% "elastic4s"         % "1.3.2",
-    "org.postgresql"            %  "postgresql"        % "9.3-1102-jdbc41"
+    "org.postgresql"            %  "postgresql"        % "9.3-1102-jdbc41",
+    "com.github.tminglei"       %% "slick-pg"          % "0.6.5.3",
+    "com.github.tminglei"       %% "slick-pg_json4s"   % "0.6.5.3"
   )
 }
 
