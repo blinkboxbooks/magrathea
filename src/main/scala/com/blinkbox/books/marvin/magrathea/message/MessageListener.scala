@@ -11,12 +11,11 @@ import com.blinkbox.books.rabbitmq.{RabbitMq, RabbitMqConfirmedPublisher, Rabbit
 
 import scala.concurrent.ExecutionContext
 
-class MessageListener(config: AppConfig, indexService: IndexService)
+class MessageListener(config: AppConfig, indexService: IndexService, documentDao: DocumentDao)
   (implicit system: ActorSystem, ex: ExecutionContext, timeout: Timeout) {
   val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
   val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
 
-  val documentDao = new DefaultDocumentDao(config.couchDbUrl, config.schemas)(system)
   val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
 
   val messageErrorHandler = errorHandler("message-error", config.listener.error)

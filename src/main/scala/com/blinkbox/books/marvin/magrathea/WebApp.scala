@@ -35,9 +35,9 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     val msgExCtx = DiagnosticExecutionContext(msgSystem.dispatcher)
     val msgTimeout = Timeout(appConfig.listener.actorTimeout)
     sys.addShutdownHook(msgSystem.shutdown())
-    val msgDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(apiSystem)
+    val msgDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(msgSystem)
     val msgIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, msgDocumentDao)
-    val messageListener = new MessageListener(appConfig, msgIndexService)(msgSystem, msgExCtx, msgTimeout)
+    val messageListener = new MessageListener(appConfig, msgIndexService, msgDocumentDao)(msgSystem, msgExCtx, msgTimeout)
     messageListener.start()
   } catch {
     case ex: ControlThrowable => throw ex
