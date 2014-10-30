@@ -78,16 +78,20 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
   }
 
   override val reIndexLatestSearch = put {
-    path("search/reindex/latest") {
-      indexService.reIndexLatest()
-      uncacheable(Accepted, None)
+    path("search" / "reindex" / "latest") {
+      dynamic {
+        indexService.reIndexLatest()
+        uncacheable(Accepted, None)
+      }
     }
   }
 
   override val reIndexHistorySearch = put {
-    path("search/reindex/history") {
-      indexService.reIndexHistory()
-      uncacheable(Accepted, None)
+    path("search" / "reindex" / "history") {
+      dynamic {
+        indexService.reIndexHistory()
+        uncacheable(Accepted, None)
+      }
     }
   }
 
