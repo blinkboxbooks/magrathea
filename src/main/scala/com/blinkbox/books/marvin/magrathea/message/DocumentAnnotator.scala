@@ -33,6 +33,15 @@ object DocumentAnnotator {
     schema merge classification merge docWithSource
   }
 
+  /** Removes any reference to source (aka undo annotate without source). */
+  def deAnnotate(doc: JValue): JValue = {
+    val classification: JValue = "classification" -> doc \ "classification"
+    val schema: JValue = "$schema" -> doc \ "$schema"
+    val d = doc.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
+    val result = doDeAnnotate(d)
+    schema merge classification merge result
+  }
+
   /** For a value to be annotated, it has to have only two children: value and source. */
   def isAnnotated(v: JValue): Boolean =
     (v.children.size == 2) && (v \ "value" != JNothing) && (v \ "source" != JNothing)
@@ -45,7 +54,8 @@ object DocumentAnnotator {
     case JObject(xs) => JObject(annotateFields(xs, srcHash))
     case JArray(xs) if isClassified(xs) => JArray(uniquelyClassify(annotateArrays(xs, srcHash)))
     case JArray(xs) => annotateValue(xs, srcHash)
-    case x => if (isAnnotated(x)) x else annotateValue(x, srcHash)
+    case x if isAnnotated(x) => x
+    case x => annotateValue(x, srcHash)
   }
 
   private def annotateFields(vs: List[JField], srcHash: String): List[JField] = vs match {
@@ -61,6 +71,25 @@ object DocumentAnnotator {
   }
 
   private def annotateValue(v: JValue, srcHash: String): JValue = ("value" -> v) ~ ("source" -> srcHash)
+
+  private def doDeAnnotate(doc: JValue): JValue = doc match {
+    case x if isAnnotated(x) => deAnnotateValue(x)
+    case JObject(xs) => JObject(deAnnotateFields(xs))
+    case JArray(xs) => JArray(deAnnotateArrays(xs))
+    case x => x
+  }
+
+  private def deAnnotateFields(vs: List[JField]): List[JField] = vs match {
+    case Nil => Nil
+    case (xn, xv) :: xs => JField(xn, doDeAnnotate(xv)) :: deAnnotateFields(xs)
+  }
+
+  private def deAnnotateArrays(vs: List[JValue]): List[JValue] = vs match {
+    case Nil => Nil
+    case x :: xs => doDeAnnotate(x) :: deAnnotateArrays(xs)
+  }
+
+  private def deAnnotateValue(v: JValue): JValue = v \ "value"
 
   /** Creating a unique classified array by merging any duplicates. */
   private def uniquelyClassify(arr: List[JValue]): List[JValue] = {

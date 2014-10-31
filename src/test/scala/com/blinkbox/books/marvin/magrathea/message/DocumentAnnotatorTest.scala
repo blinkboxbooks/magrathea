@@ -14,22 +14,8 @@ import spray.httpx.Json4sJacksonSupport
 import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
-class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers {
+class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers with TestHelper {
   implicit val json4sJacksonFormats = DefaultFormats
-
-  private def sampleBook(extraContent: JValue = JNothing): JValue = {
-    val doc: JValue =
-      ("$schema" -> "ingestion.book.metadata.v2") ~
-      ("classification" -> "something") ~
-      ("source" ->
-        ("system" ->
-          ("name" -> "marvin/design_docs") ~
-          ("version" -> "1.0.0")
-        ) ~
-        ("role" -> "publisher_ftp") ~
-        ("username" -> "jp-publishing"))
-    doc merge extraContent
-  }
 
   "The document annotator" should "refuse to annotate a document without source" in {
     val doc = sampleBook().removeDirectField("source")
@@ -41,8 +27,8 @@ class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with 
   it should "not annotate $schema and classification" in {
     val doc = sampleBook()
     val res = DocumentAnnotator.annotate(doc)
-    res \ "$schema" shouldEqual JString("ingestion.book.metadata.v2")
-    res \ "classification" shouldEqual JString("something")
+    res \ "$schema" shouldEqual doc \ "$schema"
+    res \ "classification" shouldEqual doc \ "classification"
   }
 
   it should "annotate fields with primitive values" in {
@@ -116,5 +102,63 @@ class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with 
     (res \ "array" \ "value").children shouldEqual List[JValue]("aItem" -> "a", "bItem" -> "b")
     res \ "array" \ "source" shouldEqual JString((doc \ "source").sha1)
     DocumentAnnotator.annotate(res) shouldEqual res
+  }
+
+  it should "deannotate an annotated document with primitive values" in {
+    val doc = annotatedSampleBook(("fieldA" -> "Value A") ~ ("fieldB" -> "Value B"))
+    val res = DocumentAnnotator.deAnnotate(doc)
+    res \ "fieldA" shouldEqual JString("Value A")
+    res \ "fieldB" shouldEqual JString("Value B")
+  }
+
+  it should "deannotate an annotated document with an object" in {
+    val doc = annotatedSampleBook("obj" -> (("fieldA" -> "Value A") ~ ("fieldB" -> "Value B")))
+    val res = DocumentAnnotator.deAnnotate(doc)
+    res \ "obj" \ "fieldA" shouldEqual JString("Value A")
+    res \ "obj" \ "fieldB" shouldEqual JString("Value B")
+  }
+
+  it should "deannotate an annotated document with a classified array" in {
+    val itemA: JValue = ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "a id"))) ~ ("fieldA" -> "Value A")
+    val itemB: JValue = ("classification" -> List(("realm" -> "b realm") ~ ("id" -> "b id"))) ~ ("fieldB" -> "Value B")
+    val doc = annotatedSampleBook("arr" -> List(itemA, itemB))
+    val res = DocumentAnnotator.deAnnotate(doc)
+    (res \ "arr").children.size shouldEqual 2
+    (res \ "arr").children should contain (itemA)
+    (res \ "arr").children should contain (itemB)
+  }
+
+  it should "deannotate an annotated document with a non-classified array with a single field as a primitive value" in {
+    val doc = annotatedSampleBook("arr" -> List("fieldA" -> "Value A"))
+    val res = DocumentAnnotator.deAnnotate(doc)
+    (res \ "arr").children shouldEqual List[JValue]("fieldA" -> "Value A")
+  }
+
+  it should "deannotate an annotated document with a non-classified array with multiple fields as a primitive value" in {
+    val doc = annotatedSampleBook("arr" -> List("fieldA" -> "Value A", "fieldB" -> "Value B"))
+    val res = DocumentAnnotator.deAnnotate(doc)
+    (res \ "arr").children shouldEqual List[JValue]("fieldA" -> "Value A", "fieldB" -> "Value B")
+  }
+
+  it should "not deannotate a deannotated document" in {
+    val cItemA: JValue = ("classification" -> List(("realm" -> "a realm") ~ ("id" -> "a id"))) ~ ("fieldA" -> "Value A")
+    val cItemB: JValue = ("classification" -> List(("realm" -> "b realm") ~ ("id" -> "b id"))) ~ ("fieldB" -> "Value B")
+    val doc = annotatedSampleBook(
+      ("fieldA" -> "Value A") ~
+      ("fieldB" -> "Value B") ~
+      ("obj" -> (("aField" -> "a") ~ ("bField" -> "b"))) ~
+      ("cArray" -> List(cItemA, cItemB)) ~
+      ("array" -> List("aItem" -> "a", "bItem" -> "b"))
+    )
+    val res = DocumentAnnotator.deAnnotate(doc)
+    res \ "fieldA" shouldEqual JString("Value A")
+    res \ "fieldB" shouldEqual JString("Value B")
+    res \ "obj" \ "aField" shouldEqual JString("a")
+    res \ "obj" \ "bField" shouldEqual JString("b")
+    (res \ "cArray").children.size shouldEqual 2
+    (res \ "cArray").children should contain (cItemA)
+    (res \ "cArray").children should contain (cItemB)
+    (res \ "array").children shouldEqual List[JValue]("aItem" -> "a", "bItem" -> "b")
+    DocumentAnnotator.deAnnotate(res) shouldEqual res
   }
 }

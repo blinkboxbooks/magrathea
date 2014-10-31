@@ -11,12 +11,18 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, listener: ListenerConfig, couchDbUrl: URL, schemas: SchemaConfig)
+case class AppConfig(service: ServiceConfig, listener: ListenerConfig,
+  couchDbUrl: URL, elasticsearch: ElasticConfig, schemas: SchemaConfig)
 case class ServiceConfig(api: ApiConfig)
 case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
-                          distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
+  distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
+case class ElasticConfig(url: URL, index: String, reIndexChunks: Int) {
+  val host = url.getHost
+  val port = url.getPort
+  val cluster = url.getPath.drop(1) // drop the initial slash
+}
 
 object AppConfig {
   val prefix = "service.magrathea"
@@ -24,6 +30,7 @@ object AppConfig {
     ServiceConfig(config, s"$prefix.api.public"),
     ListenerConfig(config, s"$prefix.messageListener"),
     config.getHttpUrl(s"$prefix.couchdb.url"),
+    ElasticConfig(config, s"$prefix.elasticsearch"),
     SchemaConfig(config, s"$prefix.schema")
   )
 }
@@ -36,7 +43,7 @@ object ServiceConfig {
 
 object ListenerConfig {
   def apply(config: Config, prefix: String) = new ListenerConfig(
-    RabbitMqConfig(config),
+    RabbitMqConfig(config.getConfig(s"${AppConfig.prefix}")),
     config.getDuration(s"$prefix.retryInterval", TimeUnit.SECONDS).seconds,
     config.getDuration(s"$prefix.actorTimeout", TimeUnit.SECONDS).seconds,
     DistributorConfig(config, s"$prefix.distributor"),
@@ -56,5 +63,13 @@ object SchemaConfig {
   def apply(config: Config, prefix: String) = new SchemaConfig(
     config.getString(s"$prefix.book"),
     config.getString(s"$prefix.contributor")
+  )
+}
+
+object ElasticConfig {
+  def apply(config: Config, prefix: String) = new ElasticConfig(
+    config.getUrl(s"$prefix.url"),
+    config.getString(s"$prefix.index"),
+    config.getInt(s"$prefix.reIndexChunks")
   )
 }
