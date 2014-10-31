@@ -22,8 +22,8 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 trait IndexService {
-  def searchInLatest(query: String)(page: Page): Future[ListPage[JValue]]
-  def searchInHistory(query: String)(page: Page): Future[ListPage[JValue]]
+  def searchInLatest(query: String, page: Page): Future[ListPage[JValue]]
+  def searchInHistory(query: String, page: Page): Future[ListPage[JValue]]
   def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse]
   def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse]
   def reIndexLatestDocument(docId: String, schema: String): Future[Boolean]
@@ -48,11 +48,11 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
 
   elasticClient.execute { create index config.index }
 
-  override def searchInLatest(queryText: String)(page: Page): Future[ListPage[JValue]] =
-    searchDocument(queryText, "latest")(page)
+  override def searchInLatest(queryText: String, page: Page): Future[ListPage[JValue]] =
+    searchDocument(queryText, "latest", page)
 
-  override def searchInHistory(queryText: String)(page: Page): Future[ListPage[JValue]] =
-    searchDocument(queryText, "history")(page)
+  override def searchInHistory(queryText: String, page: Page): Future[ListPage[JValue]] =
+    searchDocument(queryText, "history", page)
 
   override def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse] =
     indexDocument(doc, docId, "latest")
@@ -72,7 +72,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def reIndexHistory(): Future[Unit] =
     reIndexTable("history")(documentDao.getHistoryDocumentCount)(documentDao.getAllHistoryDocuments)
 
-  private def searchDocument(queryText: String, docType: String)(page: Page): Future[ListPage[JValue]] =
+  private def searchDocument(queryText: String, docType: String, page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
       search in s"${config.index}/$docType" query queryText start page.offset limit page.count
     } map { resp =>

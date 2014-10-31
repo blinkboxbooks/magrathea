@@ -71,7 +71,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("search") {
       parameter('q) { q =>
         paged(defaultCount = 50) { paged =>
-          onSuccess(indexService.searchInLatest(q)(paged))(uncacheable(_))
+          onSuccess(indexService.searchInLatest(q, paged))(uncacheable(_))
         }
       }
     }
