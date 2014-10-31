@@ -72,15 +72,6 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def reIndexHistory(): Future[Unit] =
     reIndexTable("history")(documentDao.getHistoryDocumentCount)(documentDao.getAllHistoryDocuments)
 
-  private def indexBulkDocuments(docs: List[JValue], docType: String): Future[BulkResponse] =
-    elasticClient.execute {
-      bulk(
-        docs.map { doc =>
-          index into s"${config.index}/$docType" doc Json4sSource(clean(doc)) id (doc \ "_id").extract[String]
-        }: _*
-      )
-    }
-
   private def searchDocument(queryText: String, docType: String)(page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
       search in s"${config.index}/$docType" query queryText start page.offset limit page.count
@@ -92,12 +83,13 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
 
   private def indexDocument(doc: JValue, docId: String, docType: String): Future[IndexResponse] =
     elasticClient.execute {
-      index into s"${config.index}/$docType" doc Json4sSource(clean(doc)) id docId
+      index into s"${config.index}/$docType" doc Json4sSource(deAnnotated(doc)) id docId
     }
 
   private def reIndexDocument(docId: String, docType: String, schema: String)
-    (f: => (String, Option[String]) => Future[Option[JValue]]): Future[Boolean] = f(docId, Option(schema)).flatMap {
-      case Some(doc) => indexDocument(deAnnotated(doc), docId, docType).map(_ => true)
+    (getDocumentById: => (String, Option[String]) => Future[Option[JValue]]): Future[Boolean] =
+    getDocumentById(docId, Option(schema)).flatMap {
+      case Some(doc) => indexDocument(doc, docId, docType).map(_ => true)
       case None => Future.successful(false)
     }
 
@@ -112,7 +104,16 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       }
     }
 
-  private def deAnnotated(doc: JValue): JValue = DocumentAnnotator.deAnnotate(doc)
+  private def indexBulkDocuments(docs: List[JValue], docType: String): Future[BulkResponse] =
+    elasticClient.execute {
+      bulk(
+        docs.map { doc =>
+          index into s"${config.index}/$docType" doc Json4sSource(deAnnotated(doc)) id (doc \ "_id").extract[String]
+        }: _*
+      )
+    }
+
+  private def deAnnotated(doc: JValue): JValue = DocumentAnnotator.deAnnotate(clean(doc))
 
   private def clean(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
 }
