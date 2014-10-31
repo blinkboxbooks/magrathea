@@ -80,7 +80,11 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
   override val reIndexLatestSearch = put {
     path("search" / "reindex" / "latest") {
       dynamic {
-        indexService.reIndexLatest()
+        log.info("Starting re-indexing of 'latest'...")
+        indexService.reIndexLatest().onComplete {
+          case scala.util.Success(_) => log.info("Re-indexing of 'latest' finished successfully.")
+          case scala.util.Failure(e) => log.error("Re-indexing of 'latest' failed.", e)
+        }
         uncacheable(Accepted, None)
       }
     }
@@ -89,7 +93,11 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
   override val reIndexHistorySearch = put {
     path("search" / "reindex" / "history") {
       dynamic {
-        indexService.reIndexHistory()
+        log.info("Starting re-indexing of 'history'...")
+        indexService.reIndexHistory().onComplete {
+          case scala.util.Success(_) => log.info("Re-indexing of 'history' finished successfully.")
+          case scala.util.Failure(e) => log.error("Re-indexing of 'history' failed.", e)
+        }
         uncacheable(Accepted, None)
       }
     }

@@ -24,8 +24,10 @@ import scala.concurrent.{ExecutionContext, Future}
 trait DocumentDao {
   def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
-  def getAllLatestIds(): Future[List[String]]
-  def getAllHistoryIds(): Future[List[String]]
+  def getLatestDocumentCount(): Future[Int]
+  def getHistoryDocumentCount(): Future[Int]
+  def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]]
+  def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]]
   def lookupLatestDocument(key: String): Future[List[JValue]]
   def lookupHistoryDocument(key: String): Future[List[JValue]]
   def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
@@ -56,9 +58,15 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
   override def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] =
     getDocumentById(id, schema, lookupHistoryUri)
 
-  override def getAllLatestIds(): Future[List[String]] = getAllDocsFromDatabase(latestUri)
+  override def getLatestDocumentCount(): Future[Int] = getTableDocumentCount(latestUri)
 
-  override def getAllHistoryIds(): Future[List[String]] = getAllDocsFromDatabase(historyUri)
+  override def getHistoryDocumentCount(): Future[Int] = getTableDocumentCount(historyUri)
+
+  override def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]] =
+    getAllDocsFromDatabase(latestUri, count, offset)
+
+  override def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] =
+    getAllDocsFromDatabase(historyUri, count, offset)
 
   override def lookupLatestDocument(key: String): Future[List[JValue]] = lookupDocument(key, latestUri)
 
@@ -94,6 +102,12 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       logger.debug("Deleted history documents: {}", documents)
     }
 
+  private def getTableDocumentCount(uri: Uri): Future[Int] =
+    pipeline(Get(uri)).map {
+      case resp if resp.status == OK => (parse(resp.entity.asString) \ "doc_count").extract[Int]
+      case resp => throw new UnsuccessfulResponseException(resp)
+    }
+
   private def getHistoryFetchUri(schema: String, key: String): Future[Uri] = Future {
     if (schema == schemas.book) bookUri.withQuery(("key", key))
     else if (schema == schemas.contributor) contributorUri.withQuery(("key", key))
@@ -113,10 +127,10 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 
-  private def getAllDocsFromDatabase(uri: Uri): Future[List[String]] =
-    pipeline(Get(uri.withPath(uri.path ++ Path("/_all_docs")))).map {
-      case resp if resp.status == OK =>
-        (parse(resp.entity.asString) \ "rows").children.map(r => (r \ "id").extract[String])
+  private def getAllDocsFromDatabase(uri: Uri, count: Int, offset: Int): Future[List[JValue]] =
+    pipeline(Get(uri.withPath(uri.path ++ Path("/_all_docs"))
+      .withQuery(("limit", count.toString), ("skip", offset.toString), ("include_docs", "true")))).map {
+      case resp if resp.status == OK => (parse(resp.entity.asString) \ "rows").children.map(_ \ "doc")
       case resp => throw new UnsuccessfulResponseException(resp)
     }
 

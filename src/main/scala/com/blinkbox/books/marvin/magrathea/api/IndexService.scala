@@ -13,6 +13,7 @@ import com.sksamuel.elastic4s.ElasticClient
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.source.DocumentSource
 import com.typesafe.scalalogging.slf4j.StrictLogging
+import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST.JValue
 import org.json4s.jackson.JsonMethods
@@ -65,25 +66,20 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean] =
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
-  override def reIndexLatest(): Future[Unit] = {
-    documentDao.getAllLatestIds().map { ids =>
-      ids.grouped(50).map { group =>
-        Future {
-          // TODO: fetch start to end and index
-        }
-      }
-    }
-  }
+  override def reIndexLatest(): Future[Unit] =
+    reIndexTable("latest")(documentDao.getLatestDocumentCount)(documentDao.getAllLatestDocuments)
 
-  override def reIndexHistory(): Future[Unit] = {
-    documentDao.getAllHistoryIds().map { ids =>
-      ids.grouped(50).map { group =>
-        Future {
-          // TODO: fetch start to end and index
-        }
-      }
+  override def reIndexHistory(): Future[Unit] =
+    reIndexTable("history")(documentDao.getHistoryDocumentCount)(documentDao.getAllHistoryDocuments)
+
+  private def indexBulkDocuments(docs: List[JValue], docType: String): Future[BulkResponse] =
+    elasticClient.execute {
+      bulk(
+        docs.map { doc =>
+          index into s"${config.index}/$docType" doc Json4sSource(clean(doc)) id (doc \ "_id").extract[String]
+        }: _*
+      )
     }
-  }
 
   private def searchDocument(queryText: String, docType: String)(page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
@@ -103,6 +99,17 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     (f: => (String, Option[String]) => Future[Option[JValue]]): Future[Boolean] = f(docId, Option(schema)).flatMap {
       case Some(doc) => indexDocument(deAnnotated(doc), docId, docType).map(_ => true)
       case None => Future.successful(false)
+    }
+
+  private def reIndexTable(table: String)(count: => () => Future[Int])(index: => (Int, Int) => Future[List[JValue]]): Future[Unit] =
+    count().flatMap { totalDocs =>
+      (0 to totalDocs by config.reIndexChunks).foldLeft(Future.successful(())) { (acc, offset) =>
+        acc.flatMap { _ =>
+          index(config.reIndexChunks, offset).flatMap { docs =>
+            indexBulkDocuments(docs, table).map(_ => ())
+          }
+        }
+      }
     }
 
   private def deAnnotated(doc: JValue): JValue = DocumentAnnotator.deAnnotate(doc)

@@ -18,7 +18,7 @@ case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuratio
   distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
-case class ElasticConfig(url: URL, index: String) {
+case class ElasticConfig(url: URL, index: String, reIndexChunks: Int) {
   val host = url.getHost
   val port = url.getPort
   val cluster = url.getPath.drop(1) // drop the initial slash
@@ -69,6 +69,7 @@ object SchemaConfig {
 object ElasticConfig {
   def apply(config: Config, prefix: String) = new ElasticConfig(
     config.getUrl(s"$prefix.url"),
-    config.getString(s"$prefix.index")
+    config.getString(s"$prefix.index"),
+    config.getInt(s"$prefix.reIndexChunks")
   )
 }
