@@ -8,6 +8,7 @@ import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
+import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -71,10 +72,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ <- distributor.sendDistributionInformation(normalisedMergedDoc) zip indexify(normalisedMergedDoc, docId)
   } yield ()
 
-  private def indexify(document: JValue, docId: String): Future[Unit] =
-    Future(DocumentAnnotator.deAnnotate(document)).flatMap { deAnnotated =>
-      indexService.indexLatestDocument(deAnnotated, docId)
-    }.map(_ => ())
+  private def indexify(document: JValue, docId: String): Future[IndexResponse] =
+    indexService.indexLatestDocument(document, docId)
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
     logger.debug("Starting document merging...")
