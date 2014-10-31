@@ -53,10 +53,10 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
   private val contributorUri = historyUri.withPath(historyUri.path ++ Path("/_design/history/_view/contributor"))
 
   override def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] =
-    getDocumentById(id, schema, lookupLatestUri)
+    getDocumentById(id, schema, latestUri)
 
   override def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]] =
-    getDocumentById(id, schema, lookupHistoryUri)
+    getDocumentById(id, schema, historyUri)
 
   override def getLatestDocumentCount(): Future[Int] = getTableDocumentCount(latestUri)
 
@@ -68,9 +68,9 @@ class DefaultDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system
   override def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] =
     getAllDocsFromDatabase(historyUri, count, offset)
 
-  override def lookupLatestDocument(key: String): Future[List[JValue]] = lookupDocument(key, latestUri)
+  override def lookupLatestDocument(key: String): Future[List[JValue]] = lookupDocument(key, lookupLatestUri)
 
-  override def lookupHistoryDocument(key: String): Future[List[JValue]] = lookupDocument(key, historyUri)
+  override def lookupHistoryDocument(key: String): Future[List[JValue]] = lookupDocument(key, lookupHistoryUri)
 
   override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] =
     getHistoryFetchUri(schema, key).flatMap { uri =>
