@@ -1,5 +1,15 @@
 # Change log
 
+## 0.1.0 ([#5](https://git.mobcastdev.com/Marvin/magrathea/pull/5) 2014-10-31 16:39:27)
+
+Search & Indexing
+
+### New features
+
+* Added search and index API
+* Added document de-annotation
+* Upgraded to Scala 2.11.4
+
 ## 0.0.4 ([#4](https://git.mobcastdev.com/Marvin/magrathea/pull/4) 2014-10-10 16:57:13)
 
 Book retrieval implementation
