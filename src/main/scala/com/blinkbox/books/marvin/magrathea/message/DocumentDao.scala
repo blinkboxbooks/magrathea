@@ -251,7 +251,6 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       HistoryRepo.filter(_.id inSet ids).delete
     }
   }
-
 }
 
 class CouchDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
