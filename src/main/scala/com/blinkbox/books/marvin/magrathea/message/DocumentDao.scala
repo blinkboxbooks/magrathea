@@ -12,6 +12,7 @@ import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.message.Postgres._
 import com.blinkbox.books.spray._
+import com.github.tminglei.slickpg._
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.{JString, JValue}
 import org.json4s.JsonDSL._
@@ -24,6 +25,7 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
+import scala.slick.driver.PostgresDriver
 import scala.slick.jdbc.{GetResult, StaticQuery => Q}
 
 trait DocumentDao {
@@ -43,10 +45,6 @@ trait DocumentDao {
 }
 
 object Postgres {
-  import com.github.tminglei.slickpg._
-
-import scala.slick.driver.PostgresDriver
-
   object MyPostgresDriver extends PostgresDriver with PgJson4sSupport with array.PgArrayJdbcTypes {
     type DOCType = JValue
     override val jsonMethods = org.json4s.jackson.JsonMethods
@@ -112,15 +110,27 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     }
   }
 
-  override def getAllLatestIds(): Future[List[String]] = Future {
+  override def getLatestDocumentCount(): Future[Int] = Future {
     db.withSession { implicit session =>
-      ???
+      LatestRepo.size.run
     }
   }
 
-  override def getAllHistoryIds(): Future[List[String]] = Future {
+  override def getHistoryDocumentCount(): Future[Int] = Future {
     db.withSession { implicit session =>
-      ???
+      HistoryRepo.size.run
+    }
+  }
+
+  override def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
+    db.withSession { implicit session =>
+      LatestRepo.drop(offset).take(count).map(_.doc).list
+    }
+  }
+
+  override def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
+    db.withSession { implicit session =>
+      HistoryRepo.drop(offset).take(count).map(_.doc).list
     }
   }
 
@@ -131,11 +141,6 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     schemaField merge doc.removeDirectField("role") merge sourceField
   }
 
-<<<<<<< HEAD
-  override def getAllLatestIds(): Future[List[String]] = ???
-
-  override def getAllHistoryIds(): Future[List[String]] = ???
-=======
   override def lookupLatestDocument(key: String): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
       val json = parse(key)
@@ -149,7 +154,6 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
         .map(addIdRev)
     }
   }
->>>>>>> Quick hack for postgresql
 
   override def lookupHistoryDocument(key: String): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
@@ -180,11 +184,12 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
           .map(_.doc).list
         val contributorFromBooks = Q.queryNA[(JValue, JValue)](
           s"""
-            |select contributors.value as contributor, source
+            |select
+            |  contributors.value as contributor,
+            |  json_extract_path(history.doc, 'source') as source
             |from
             |  history,
-            |  json_array_elements(json_extract_path(history.doc, 'contributors')) as contributors,
-            |  json_extract_path(history.doc, 'source') as source
+            |  json_array_elements(json_extract_path(history.doc, 'contributors')) as contributors
             |where
             |  doc->>'$$schema' = '${schemas.book}' and
             |  contributors.value->>'classification' = '$classification';
@@ -246,6 +251,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       HistoryRepo.filter(_.id inSet ids).delete
     }
   }
+
 }
 
 class CouchDocumentDao(couchDbUrl: URL, schemas: SchemaConfig)(implicit system: ActorSystem)
