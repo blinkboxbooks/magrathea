@@ -138,6 +138,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     }
   }
 
+  private def escape(s: String): String = s.replace("'", "''")
   private def addIdRev(id: String): JValue = "value" -> ("_id" -> id) ~ ("_rev" -> id)
   private def contribufy(doc: JValue, source: JValue, schema: String): JValue = {
     val schemaField: JValue = "$schema" -> schema
@@ -158,7 +159,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
            |  latest
            |WHERE
            |  doc->>'$$schema' = '$schema' AND
-           |  doc->'classification' @> '${compact(classification)}'
+           |  doc->'classification' @> '${escape(compact(classification))}'
          """.stripMargin).list.map(addIdRev)
     }
   }
@@ -180,7 +181,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
 
   override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
-      val classification = key
+      val classification = escape(key)
       val contributorDocs = Q.queryNA[JValue](
         s"""
            |SELECT
@@ -221,7 +222,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
                |UPDATE
                |  latest
                |SET
-               |  doc = '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}'
+               |  doc = '${escape(compact(render(document.removeDirectField("_id").removeDirectField("_rev"))))}'
                |WHERE id = '$docId'
              """.stripMargin).execute
           id
@@ -229,7 +230,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
           val query: Q[Unit, String] = new Q[Unit, String](
             s"""
                |INSERT INTO latest (doc) VALUES(
-               |  '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}'
+               |  '${escape(compact(render(document.removeDirectField("_id").removeDirectField("_rev"))))}'
                |)
                |RETURNING id
              """.stripMargin, SetParameter.SetUnit, GetResult.GetString)
@@ -254,7 +255,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
                |UPDATE
                |  history
                |SET
-               |  doc = '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}',
+               |  doc = '${escape(compact(render(document.removeDirectField("_id").removeDirectField("_rev"))))}',
                |  key = '${key.sha1}'
                |WHERE id = '$docId'
              """.stripMargin).execute
@@ -262,7 +263,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
           Q.updateNA(
             s"""
                |INSERT INTO history (doc, key) VALUES(
-               |  '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}',
+               |  '${escape(compact(render(document.removeDirectField("_id").removeDirectField("_rev"))))}',
                |  '${key.sha1}'
                |)
              """.stripMargin).execute
