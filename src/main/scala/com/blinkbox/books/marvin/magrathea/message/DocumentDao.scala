@@ -26,7 +26,8 @@ import spray.httpx.{Json4sJacksonSupport, UnsuccessfulResponseException}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
-import scala.slick.jdbc.{GetResult, StaticQuery => Q}
+import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q}
+import scala.util.Try
 
 trait DocumentDao {
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
@@ -83,29 +84,32 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private val db = Database.forURL(config.jdbcUrl, user = config.user, password = config.pass)
   db.createConnection().close()
 
-  val HistoryRepo = TableQuery[HistoryTable]
-  val LatestRepo = TableQuery[LatestTable]
+  private val HistoryRepo = TableQuery[HistoryTable]
+  private val LatestRepo = TableQuery[LatestTable]
+  private implicit val getJValueResult = GetResult(r => parse(r.nextString()))
 
   override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
     db.withSession { implicit session =>
-      val uuid = UUID.fromString(id)
-      val doc = LatestRepo.filter(_.id === uuid).map(_.doc).firstOption
-      (schema, doc) match {
-        case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
-        case (None, _) => doc
-        case _ => None
+      Try(UUID.fromString(id)).toOption.flatMap { uuid =>
+        val doc = LatestRepo.filter(_.id === uuid).map(_.doc).firstOption
+        (schema, doc) match {
+          case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
+          case (None, _) => doc
+          case _ => None
+        }
       }
     }
   }
 
   override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
     db.withSession { implicit session =>
-      val uuid = UUID.fromString(id)
-      val doc = HistoryRepo.filter(_.id === uuid).map(_.doc).firstOption
-      (schema, doc) match {
-        case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
-        case (None, _) => doc
-        case _ => None
+      Try(UUID.fromString(id)).toOption.flatMap { uuid =>
+        val doc = HistoryRepo.filter(_.id === uuid).map(_.doc).firstOption
+        (schema, doc) match {
+          case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
+          case (None, _) => doc
+          case _ => None
+        }
       }
     }
   }
@@ -134,7 +138,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     }
   }
 
-  private def addIdRev(id: UUID): JValue = "value" -> ("_id" -> id.toString) ~ ("_rev" -> id.toString)
+  private def addIdRev(id: String): JValue = "value" -> ("_id" -> id) ~ ("_rev" -> id)
   private def contribufy(doc: JValue, source: JValue, schema: String): JValue = {
     val schemaField: JValue = "$schema" -> schema
     val sourceField: JValue = "source" -> source
@@ -146,58 +150,64 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       val json = parse(key)
       val schema = json.children(0).extract[String]
       val classification = json.children(1)
-      LatestRepo
-        .filter(_.doc.+>>("$schema") === schema)
-        .filter(_.doc.+>>("classification") === compact(classification))
-        .map(_.id)
-        .list
-        .map(addIdRev)
+      Q.queryNA[String](
+        s"""
+           |SELECT
+           |  id
+           |FROM
+           |  latest
+           |WHERE
+           |  doc->>'$$schema' = '$schema' AND
+           |  doc->'classification' @> '${compact(classification)}'
+         """.stripMargin).list.map(addIdRev)
     }
   }
 
   override def lookupHistoryDocument(key: String): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
       val jsonKey = parse(key).sha1
-      HistoryRepo
-        .filter(_.key === jsonKey)
-        .map(_.id)
-        .list
-        .map(addIdRev)
+      Q.queryNA[String](
+        s"""
+           |SELECT
+           |  id
+           |FROM
+           |  history
+           |WHERE
+           |  key = '$jsonKey'
+         """.stripMargin).list.map(addIdRev)
     }
   }
 
   override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
       val classification = key
-      if (schema == schemas.book) {
-        // books
-        HistoryRepo
-          .filter(_.doc.+>>("$schema") === schema)
-          .filter(_.doc.+>>("classification") === classification)
-          .map(_.doc).list
-      } else {
-        // contributors
-        implicit val getJValueResult = GetResult(r => parse(r.nextString()))
-        val contributorDocs = HistoryRepo
-          .filter(_.doc.+>>("$schema") === schema)
-          .filter(_.doc.+>>("classification") === classification)
-          .map(_.doc).list
+      val contributorDocs = Q.queryNA[JValue](
+        s"""
+           |SELECT
+           |  doc
+           |FROM
+           |  history
+           |WHERE
+           |  doc->>'$$schema' = '$schema' AND
+           |  doc->'classification' @> '$classification'
+         """.stripMargin).list
+      if (schema == schemas.contributor) {
         val contributorFromBooks = Q.queryNA[(JValue, JValue)](
           s"""
-            |select
-            |  contributors.value as contributor,
-            |  json_extract_path(history.doc, 'source') as source
-            |from
+            |SELECT
+            |  contributors.value,
+            |  jsonb_extract_path(history.doc, 'source') as source
+            |FROM
             |  history,
-            |  json_array_elements(json_extract_path(history.doc, 'contributors')) as contributors
-            |where
+            |  jsonb_array_elements(jsonb_extract_path(history.doc, 'contributors')) as contributors
+            |WHERE
             |  doc->>'$$schema' = '${schemas.book}' and
-            |  contributors.value->>'classification' = '$classification';
+            |  contributors.value->'classification' @> '$classification';
           """.stripMargin).list.map {
             case (contributor, source) => contribufy(contributor, source, schemas.contributor)
           }
         contributorDocs ++ contributorFromBooks
-      }
+      } else contributorDocs
     }
   }
 
@@ -206,13 +216,24 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       document \ "_id" match {
         case JString(id) =>
           val docId = UUID.fromString(id)
-          val latest = Latest(docId, document.removeDirectField("_id").removeDirectField("_rev"))
-          LatestRepo.filter(_.id === docId).update(latest)
+          Q.updateNA(
+            s"""
+               |UPDATE
+               |  latest
+               |SET
+               |  doc = '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}'
+               |WHERE id = '$docId'
+             """.stripMargin).execute
           id
         case _ =>
-          val docId = UUID.randomUUID()
-          val latest = Latest(docId, document.removeDirectField("_id").removeDirectField("_rev"))
-          LatestRepo.returning(LatestRepo.map(_.id)).insert(latest).toString
+          val query: Q[Unit, String] = new Q[Unit, String](
+            s"""
+               |INSERT INTO latest (doc) VALUES(
+               |  '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}'
+               |)
+               |RETURNING id
+             """.stripMargin, SetParameter.SetUnit, GetResult.GetString)
+          query.first
       }
     }
   }
@@ -228,12 +249,23 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       document \ "_id" match {
         case JString(id) =>
           val docId = UUID.fromString(id)
-          val history = History(docId, document.removeDirectField("_id").removeDirectField("_rev"), key.sha1)
-          HistoryRepo.filter(_.id === docId).update(history)
+          Q.updateNA(
+            s"""
+               |UPDATE
+               |  history
+               |SET
+               |  doc = '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}',
+               |  key = '${key.sha1}'
+               |WHERE id = '$docId'
+             """.stripMargin).execute
         case _ =>
-          val docId = UUID.randomUUID()
-          val history = History(docId, document.removeDirectField("_id").removeDirectField("_rev"), key.sha1)
-          HistoryRepo.insert(history)
+          Q.updateNA(
+            s"""
+               |INSERT INTO history (doc, key) VALUES(
+               |  '${compact(render(document.removeDirectField("_id").removeDirectField("_rev")))}',
+               |  '${key.sha1}'
+               |)
+             """.stripMargin).execute
       }
     }
   }
