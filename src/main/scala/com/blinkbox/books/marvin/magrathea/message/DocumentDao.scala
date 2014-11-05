@@ -8,6 +8,7 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.github.tminglei.slickpg.PgJson4sSupport
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.{JString, JValue}
 import org.json4s.JsonDSL._
@@ -16,6 +17,7 @@ import spray.httpx.Json4sJacksonSupport
 
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
+import scala.slick.driver.PostgresDriver
 import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q}
 import scala.util.Try
 
@@ -38,9 +40,19 @@ trait DocumentDao {
   def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
 }
 
+object MyPostgresDriver extends PostgresDriver with PgJson4sSupport {
+  override type DOCType = JValue
+  override val jsonMethods = JsonMethods
+  override lazy val Implicit = new Implicits with JsonImplicits
+  override val simple = new Implicits with SimpleQL with JsonImplicits
+}
+
 class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends DocumentDao
   with Json4sJacksonSupport with JsonMethods with StrictLogging {
-  import scala.slick.driver.PostgresDriver.simple._
+  import com.blinkbox.books.marvin.magrathea.message.MyPostgresDriver.simple._
+
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  override implicit val json4sJacksonFormats = DefaultFormats
 
   class HistoryTable(tag: Tag) extends Table[History](tag, "history") {
     def id = column[UUID]("id", O.PrimaryKey)
@@ -57,14 +69,15 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     def * = (id, doc) <> (Latest.tupled, Latest.unapply)
   }
 
-  override implicit val json4sJacksonFormats = DefaultFormats
-  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   private val db = Database.forURL(config.jdbcUrl, user = config.user, password = config.pass)
   db.createConnection().close()
 
   private val HistoryRepo = TableQuery[HistoryTable]
   private val LatestRepo = TableQuery[LatestTable]
-  private implicit val getJValueResult = GetResult(r => parse(r.nextString()))
+
+  private def escape(s: String): String = s.replace("'", "''")
+  private implicit val GetJValueResult = GetResult[JValue](r => parse(r.nextString()))
+  private implicit val SetJValueParameter = SetParameter[JValue]((v, pp) => pp.setString(compact(render(v))))
 
   private val lookupLatestDocumentQuery = Q.query[(String, JValue), String](
     """
@@ -188,7 +201,6 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     }
   }
 
-  private def escape(s: String): String = s.replace("'", "''")
   private def addIdRev(id: String): JValue = "value" -> ("_id" -> id) ~ ("_rev" -> id)
   private def contribufy(doc: JValue, source: JValue, schema: String): JValue = {
     val schemaField: JValue = "$schema" -> schema
