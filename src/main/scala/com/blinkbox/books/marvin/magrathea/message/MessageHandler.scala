@@ -30,13 +30,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
 
   override protected def handleEvent(event: Event, originalSender: ActorRef): Future[Unit] = timeTaken(for {
     incomingDoc <- parseDocument(event.body.asString())
-    historyLookupKey = extractHistoryLookupKey(incomingDoc)
-    historyLookupKeyMatches <- documentDao.lookupHistoryDocument(historyLookupKey)
-    normalisedIncomingDoc = normaliseHistoryDocument(incomingDoc, historyLookupKeyMatches)
-    _ <- normaliseDatabase(historyLookupKeyMatches)(documentDao.deleteHistoryDocuments)
-    _ <- documentDao.storeHistoryDocument(normalisedIncomingDoc)
-    (schema, classification) = extractSchemaAndClassification(normalisedIncomingDoc)
-    _ <- mergeStoreDistribute(schema, classification) zip contributorMerge(normalisedIncomingDoc)
+    document = normaliseContributors(incomingDoc)
+    _ <- handleDocument(document) zip handleContributors(document \ "contributors")
   } yield ())
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -52,49 +47,15 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ = logger.info(s"Elapsed time to handle document: ${t1 - t0}ms")
   } yield res
 
-  private def contributorMerge(document: JValue): Future[Unit] = document \ "contributors" match {
-    case JArray(arr) =>
-      logger.info("Merging contributors")
-      Future.sequence(arr.map { contributor =>
-        mergeStoreDistribute(schemas.contributor, extractClassification(contributor))
-      }).map(_ => ())
-    case _ => Future.successful(())
-  }
-
-  private def mergeStoreDistribute(schema: String, classification: String): Future[Unit] = for {
-    history <- documentDao.fetchHistoryDocuments(schema, classification)
-    mergedDoc = mergeDocuments(history)
-    latestLookupKey = extractLatestLookupKey(mergedDoc)
-    latestLookupKeyMatches <- documentDao.lookupLatestDocument(latestLookupKey)
-    normalisedMergedDoc = normaliseDocument(mergedDoc, latestLookupKeyMatches)
-    _ <- normaliseDatabase(latestLookupKeyMatches)(documentDao.deleteLatestDocuments)
-    docId <- documentDao.storeLatestDocument(normalisedMergedDoc)
-    _ <- distributor.sendDistributionInformation(normalisedMergedDoc) zip indexify(normalisedMergedDoc, docId)
-  } yield ()
-
-  private def indexify(document: JValue, docId: String): Future[IndexResponse] =
-    indexService.indexLatestDocument(document, docId)
-
-  private def mergeDocuments(documents: List[JValue]): JValue = {
-    logger.debug("Starting document merging...")
-    val merged = documents match {
-      case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
-      case x :: Nil => DocumentAnnotator.annotate(x)
-      case x => x.par.reduce(documentMerge)
-    }
-    logger.info("Merged document")
-    merged.removeDirectField("_id").removeDirectField("_rev")
-  }
 
   private def parseDocument(json: String): Future[JValue] = Future {
     logger.info("Received document")
     parse(json)
   }
 
-  private def normaliseHistoryDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue = {
-    val doc = normaliseDocument(document, lookupKeyMatches)
-    doc \ "contributors" match {
-      case JArray(arr) =>
+  private def normaliseContributors(doc: JValue): JValue = {
+    (doc \ "$schema", doc \ "contributors") match {
+      case (JString(schema), JArray(arr)) if schema == schemas.book =>
         val newArr: JValue = arr.map { contributor =>
           val name = contributor \ "names" \ "display"
           if (name == JNothing) throw new IllegalArgumentException(
@@ -111,66 +72,37 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     }
   }
 
-  private def normaliseDocument(document: JValue, lookupKeyMatches: List[JValue]): JValue =
-    // Merging the value of the first row with the rest of the document. This will result in a document with
-    // "_id" and "_rev" fields, which means replace the previous document with this new one.
-    // If the first row does not exist, the document will remain unchanged.
-    lookupKeyMatches.headOption match {
-      case Some(item) =>
-        logger.debug("Normalised document to override")
-        val (id, rev) = extractIdRev(item)
-        document merge (("_id" -> id) ~ ("_rev" -> rev))
-      case None => document
+  private def handleDocument(document: JValue): Future[Unit] = for {
+    (insertId, deletedIds) <- documentDao.storeHistoryDocument(document)
+    history <- documentDao.getDocumentHistory(document)
+    mergedDoc = mergeDocuments(history)
+    (insertId, deletedIds) <- documentDao.storeLatestDocument(mergedDoc)
+    _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
+  } yield ()
+
+  private def handleContributors(document: JValue): Future[Unit] = document match {
+    case JArray(arr) =>
+      logger.info("Merging contributors")
+      Future.sequence(arr.map { contributor =>
+        // TODO: Contribufy the document
+        handleDocument(contributor)
+      }).map(_ => ())
+    case _ => Future.successful(())
+  }
+
+  private def indexify(document: JValue, insertId: String, deletedIds: List[String]): Future[IndexResponse] = {
+    // TODO: Delete previous indexes
+    indexService.indexLatestDocument(document, insertId)
+  }
+
+  private def mergeDocuments(documents: List[JValue]): JValue = {
+    logger.debug("Starting document merging...")
+    val merged = documents match {
+      case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
+      case x :: Nil => DocumentAnnotator.annotate(x)
+      case x => x.par.reduce(documentMerge)
     }
-
-  private def normaliseDatabase(lookupKeyMatches: List[JValue])(f: List[(String, String)] => Future[Unit]): Future[Unit] =
-    // If there is at least on document with that key, delete all these documents except the first
-    if (lookupKeyMatches.size > 1) f(lookupKeyMatches.drop(1).map(extractIdRev)) else Future.successful(())
-
-  private def extractIdRev(item: JValue): (String, String) = {
-    val id = item \ "value" \ "_id"
-    val rev = item \ "value" \ "_rev"
-    if (id == JNothing || rev == JNothing)
-      throw new IllegalArgumentException(s"Cannot extract _id and _rev: ${compact(render(item))}")
-    (id.extract[String], rev.extract[String])
-  }
-
-  private def extractHistoryLookupKey(document: JValue): String = {
-    val schema = document \ "$schema"
-    val source = (document \ "source")
-      .removeDirectField("processedAt")
-      .remove(_ == document \ "source" \ "system" \ "version")
-    val classification = document \ "classification"
-    if (schema == JNothing || source == JNothing || classification == JNothing)
-      throw new IllegalArgumentException(
-        s"Cannot extract history lookup key (schema, source, classification): ${compact(render(document))}")
-    val key = compact(render(List(schema, source, classification)))
-    logger.debug("Extracted history lookup key: {}", key)
-    key
-  }
-
-  private def extractLatestLookupKey(document: JValue): String = {
-    val schema = document \ "$schema"
-    val classification = document \ "classification"
-    if (schema == JNothing || classification == JNothing)
-      throw new IllegalArgumentException(
-        s"Cannot extract latest lookup key (schema, classification): ${compact(render(document))}")
-    val key = compact(render(("$schema" -> schema) ~ ("classification" -> classification)))
-    logger.debug("Extracted latest lookup key: {}", key)
-    key
-  }
-
-  private def extractClassification(document: JValue): String = {
-    val classification = document \ "classification"
-    if (classification == JNothing)
-      throw new IllegalArgumentException(s"Cannot extract classification: ${compact(render(document))}")
-    compact(render(classification))
-  }
-
-  private def extractSchemaAndClassification(document: JValue): (String, String) = {
-    val schema = document \ "$schema"
-    if (schema == JNothing)
-      throw new IllegalArgumentException(s"Cannot extract schema: ${compact(render(document))}")
-    (schema.extract[String], extractClassification(document))
+    logger.info("Merged document")
+    merged
   }
 }

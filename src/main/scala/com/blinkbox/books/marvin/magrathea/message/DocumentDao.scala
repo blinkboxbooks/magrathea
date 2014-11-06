@@ -1,6 +1,5 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import java.util.UUID
 import java.util.concurrent.Executors
 
 import com.blinkbox.books.config.DatabaseConfig
@@ -10,7 +9,7 @@ import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.github.tminglei.slickpg.PgJson4sSupport
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.{JString, JValue}
+import org.json4s.JsonAST.{JNothing, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.httpx.Json4sJacksonSupport
@@ -19,25 +18,34 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
 import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q}
-import scala.util.Try
 
-case class History(id: UUID, schema: String, doc: JValue, source: JValue, classification: JValue)
-case class Latest(id: UUID, doc: JValue)
+case class History(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) {
+  lazy val toJson: JValue = {
+    val schemaField: JValue = "$schema" -> schema
+    val classificationField: JValue = "classification" -> classification
+    val sourceField: JValue = "source" -> source
+    schemaField merge classificationField merge doc merge sourceField
+  }
+}
+case class Latest(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) {
+  lazy val toJson: JValue = {
+    val schemaField: JValue = "$schema" -> schema
+    val classificationField: JValue = "classification" -> classification
+    val sourceField: JValue = "source" -> source
+    schemaField merge classificationField merge doc merge sourceField
+  }
+}
 
 trait DocumentDao {
-  def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def getHistoryDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
-  def getLatestDocumentCount(): Future[Int]
-  def getHistoryDocumentCount(): Future[Int]
-  def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]]
-  def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]]
-  def lookupLatestDocument(key: String): Future[List[JValue]]
-  def lookupHistoryDocument(key: String): Future[List[JValue]]
-  def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]]
-  def storeLatestDocument(document: JValue): Future[String]
-  def storeHistoryDocument(document: JValue): Future[Unit]
-  def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit]
-  def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit]
+  def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
+  def countHistoryDocuments(): Future[Int]
+  def countLatestDocuments(): Future[Int]
+  def getHistoryDocuments(count: Int, offset: Int): Future[List[JValue]]
+  def getLatestDocuments(count: Int, offset: Int): Future[List[JValue]]
+  def storeHistoryDocument(document: JValue, deleteOld: Boolean = true): Future[(String, List[String])]
+  def storeLatestDocument(document: JValue, deleteOld: Boolean = true): Future[(String, List[String])]
+  def getDocumentHistory(document: JValue): Future[List[JValue]]
 }
 
 object MyPostgresDriver extends PostgresDriver with PgJson4sSupport {
@@ -55,225 +63,115 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   override implicit val json4sJacksonFormats = DefaultFormats
 
   class HistoryTable(tag: Tag) extends Table[History](tag, "history") {
-    def id = column[UUID]("id", O.PrimaryKey)
+    def id = column[String]("id", O.PrimaryKey)
     def schema = column[String]("schema")
+    def classification = column[JValue]("classification")
     def doc = column[JValue]("doc")
     def source = column[JValue]("source")
-    def classification = column[JValue]("classification")
-    def * = (id, schema, doc, source, classification) <> (History.tupled, History.unapply)
+    def * = (id, schema, classification, doc, source) <> (History.tupled, History.unapply)
   }
 
   class LatestTable(tag: Tag) extends Table[Latest](tag, "latest") {
-    def id = column[UUID]("id", O.PrimaryKey)
+    def id = column[String]("id", O.PrimaryKey)
+    def schema = column[String]("schema")
+    def classification = column[JValue]("classification")
     def doc = column[JValue]("doc")
-    def * = (id, doc) <> (Latest.tupled, Latest.unapply)
+    def source = column[JValue]("source")
+    def * = (id, schema, classification, doc, source) <> (Latest.tupled, Latest.unapply)
   }
 
   private val db = Database.forURL(config.jdbcUrl, user = config.user, password = config.pass)
-  db.createConnection().close()
-
   private val HistoryRepo = TableQuery[HistoryTable]
   private val LatestRepo = TableQuery[LatestTable]
 
-  private def escape(s: String): String = s.replace("'", "''")
-  private implicit val GetJValueResult = GetResult[JValue](r => parse(r.nextString()))
+  private implicit val GetHistoryResult = GetResult[History](r => History(
+    r.nextString(), r.nextString(), parse(r.nextString()), parse(r.nextString()), parse(r.nextString())))
   private implicit val SetJValueParameter = SetParameter[JValue]((v, pp) => pp.setString(compact(render(v))))
 
-  private val lookupLatestDocumentQuery = Q.query[(String, JValue), String](
-    """
-      |SELECT
-      |  id
-      |FROM
-      |  latest
-      |WHERE
-      |  doc->>'$schema' = ? AND
-      |  doc->'classification' @> ?'
-    """.stripMargin)
+  private val deleteHistoryDocumentsContainingSource = Q.query[JValue, String](
+    "DELETE FROM history WHERE source @> ?::jsonb RETURNING id")
 
-  private val lookupHistoryDocumentQuery = Q.query[String, String](
-    """
-      |SELECT id FROM history WHERE
-      |  key = ?
-    """.stripMargin)
+  private val deleteLatestDocumentsContainingSource = Q.query[JValue, String](
+    "DELETE FROM latest WHERE source @> ?::jsonb RETURNING id")
 
-  private val fetchHistoryDocumentQuery = Q.query[(String, String), JValue](
-    """
-      |SELECT
-      |  doc
-      |FROM
-      |  history
-      |WHERE
-      |  doc->>'$schema' = ? AND
-      |  doc->'classification' @> ?
-    """.stripMargin)
+  private val insertHistoryDocument = Q.query[(String, JValue, JValue, JValue), String](
+    "INSERT INTO history (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
-  private val fetchHistoryContributorsFromBooksQuery = Q.query[String, (JValue, JValue)](
-    s"""
-      |SELECT
-      |  contributors.value,
-      |  jsonb_extract_path(history.doc, 'source') AS source
-      |FROM
-      |  history,
-      |  jsonb_array_elements(jsonb_extract_path(history.doc, 'contributors')) AS contributors
-      |WHERE
-      |  doc->>'$$schema' = '${schemas.book}' AND
-      |  contributors.value->'classification' @> ?;
-    """.stripMargin)
+  private val insertLatestDocument = Q.query[(String, JValue, JValue, JValue), String](
+    "INSERT INTO latest (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
-  private val updateHistoryDocumentQuery = Q.update[(JValue, String, String)](
-    """
-      |UPDATE
-      |  history
-      |SET
-      |  doc = ?,
-      |  key = ?
-      |WHERE
-      |  id = ?
-    """.stripMargin)
-
-  private val insertHistoryDocumentQuery = Q.update[(JValue, String)](
-    """
-      |INSERT INTO history (doc, key) VALUES(?, ?)
-    """.stripMargin)
-
-  private val updateLatestDocumentQuery = Q.update[(JValue, String)](
-    s"""
-       |UPDATE
-       |  latest
-       |SET
-       |  doc = ?
-       |WHERE
-       |  id = ?
-    """.stripMargin)
-
-  private val insertLatestDocumentQuery = new Q[String, String](
-    """
-      |INSERT INTO latest (doc) VALUES(?) RETURNING id
-    """.stripMargin, SetParameter.SetString, GetResult.GetString)
-
-  override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
-    db.withSession { implicit session =>
-      Try(UUID.fromString(id)).toOption.flatMap { uuid =>
-        val doc = LatestRepo.filter(_.id === uuid).map(_.doc).firstOption
-        (schema, doc) match {
-          case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
-          case (None, _) => doc
-          case _ => None
-        }
-      }
-    }
-  }
+  private val selectDocumentHistory = Q.query[(String, JValue), History]("" +
+    "SELECT id, schema, classification, doc, source FROM history WHERE schema = ? AND classification = ?::jsonb")
 
   override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
     db.withSession { implicit session =>
-      Try(UUID.fromString(id)).toOption.flatMap { uuid =>
-        val doc = HistoryRepo.filter(_.id === uuid).map(_.doc).firstOption
-        (schema, doc) match {
-          case (Some(s), Some(d)) if d \ "$schema" == JString(s) => doc
-          case (None, _) => doc
-          case _ => None
-        }
+      val doc = HistoryRepo.withFilter(_.id === id).firstOption
+      (schema, doc) match {
+        case (Some(s), Some(d)) if d.schema == s => Option(d.toJson)
+        case (None, Some(d)) => Option(d.toJson)
+        case _ => None
       }
     }
   }
 
-  override def getLatestDocumentCount(): Future[Int] = Future {
+  override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
     db.withSession { implicit session =>
-      LatestRepo.size.run
-    }
-  }
-
-  override def getHistoryDocumentCount(): Future[Int] = Future {
-    db.withSession { implicit session =>
-      HistoryRepo.size.run
-    }
-  }
-
-  override def getAllLatestDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      LatestRepo.drop(offset).take(count).map(_.doc).list
-    }
-  }
-
-  override def getAllHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      HistoryRepo.drop(offset).take(count).map(_.doc).list
-    }
-  }
-
-  private def addIdRev(id: String): JValue = "value" -> ("_id" -> id) ~ ("_rev" -> id)
-  private def contribufy(doc: JValue, source: JValue, schema: String): JValue = {
-    val schemaField: JValue = "$schema" -> schema
-    val sourceField: JValue = "source" -> source
-    schemaField merge doc.removeDirectField("role") merge sourceField
-  }
-
-  override def lookupLatestDocument(key: String): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      val json = parse(key)
-      val schema = json.children(0).extract[String]
-      val classification = json.children(1)
-      lookupLatestDocumentQuery(schema, classification).list.map(addIdRev)
-    }
-  }
-
-  override def lookupHistoryDocument(key: String): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      val jsonKey = parse(key).sha1
-      lookupHistoryDocumentQuery(jsonKey).list.map(addIdRev)
-    }
-  }
-
-  override def fetchHistoryDocuments(schema: String, key: String): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      val classification = escape(key)
-      val contributorDocs = fetchHistoryDocumentQuery(schema, classification).list
-      if (schema == schemas.contributor) {
-        val contributorFromBooks = fetchHistoryContributorsFromBooksQuery(classification).list.map {
-          case (contributor, source) => contribufy(contributor, source, schemas.contributor)
-        }
-        contributorDocs ++ contributorFromBooks
-      } else contributorDocs
-    }
-  }
-
-  override def storeLatestDocument(document: JValue): Future[String] = Future {
-    db.withSession { implicit session =>
-      document \ "_id" match {
-        case JString(id) =>
-          updateLatestDocumentQuery(document, id).execute
-          id
-        case _ => insertLatestDocumentQuery(compact(document)).first
+      val doc = LatestRepo.withFilter(_.id === id).firstOption
+      (schema, doc) match {
+        case (Some(s), Some(d)) if d.schema == s => Option(d.toJson)
+        case (None, Some(d)) => Option(d.toJson)
+        case _ => None
       }
     }
   }
 
-  override def storeHistoryDocument(document: JValue): Future[Unit] = Future {
+  override def countHistoryDocuments(): Future[Int] = Future {
+    db.withSession { implicit session => HistoryRepo.size.run }
+  }
+
+  override def countLatestDocuments(): Future[Int] = Future {
+    db.withSession { implicit session => LatestRepo.size.run }
+  }
+
+  override def getHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
+    db.withSession { implicit session => HistoryRepo.drop(offset).take(count).map(_.doc).list }
+  }
+
+  override def getLatestDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
+    db.withSession { implicit session => LatestRepo.drop(offset).take(count).map(_.doc).list }
+  }
+
+  override def storeHistoryDocument(document: JValue, deleteOld: Boolean): Future[(String, List[String])] =
+    storeDocument(document, deleteOld)(insertHistoryDocument, deleteHistoryDocumentsContainingSource)
+
+  override def storeLatestDocument(document: JValue, deleteOld: Boolean): Future[(String, List[String])] =
+    storeDocument(document, deleteOld)(insertLatestDocument, deleteLatestDocumentsContainingSource)
+
+  override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
       val schema = document \ "$schema"
-      val source = (document \ "source")
-        .removeDirectField("processedAt")
-        .remove(_ == document \ "source" \ "system" \ "version")
       val classification = document \ "classification"
-      val key = render(List(schema, source, classification))
-      document \ "_id" match {
-        case JString(id) => updateHistoryDocumentQuery(document, key.sha1, id).execute
-        case _ => insertHistoryDocumentQuery(document, key.sha1).execute
-      }
+      if (schema == JNothing || classification == JNothing) throw new IllegalArgumentException(
+        s"Cannot find document schema, classification: ${compact(render(document))}")
+      selectDocumentHistory(schema.extract[String], classification).list.map(_.toJson)
     }
   }
 
-  override def deleteLatestDocuments(documents: List[(String, String)]): Future[Unit] = Future {
-    db.withSession { implicit session =>
-      val ids = documents.map(x => UUID.fromString(x._1))
-      LatestRepo.filter(_.id inSet ids).delete
-    }
-  }
-
-  override def deleteHistoryDocuments(documents: List[(String, String)]): Future[Unit] = Future {
-    db.withSession { implicit session =>
-      val ids = documents.map(x => UUID.fromString(x._1))
-      HistoryRepo.filter(_.id inSet ids).delete
+  private def storeDocument(document: JValue, deleteOld: Boolean)(insert: Q[(String, JValue, JValue, JValue), String],
+    deleteContainingSource: Q[JValue, String]): Future[(String, List[String])] = Future {
+    db.withTransaction { implicit session =>
+      val schema = document \ "$schema"
+      val classification = document \ "classification"
+      val source = document \ "source"
+      if (schema == JNothing || classification == JNothing || source == JNothing) throw new IllegalArgumentException(
+        s"Cannot find document schema, classification and source: ${compact(render(document))}")
+      val doc = document.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
+      val deleted = if (deleteOld) {
+        val keySource = source.removeDirectField("processedAt").remove(_ == source \ "system" \ "version")
+        deleteContainingSource(keySource).list
+      } else List.empty
+      val inserted = insert(schema.extract[String], classification, doc, source).first
+      (inserted, deleted)
     }
   }
 }

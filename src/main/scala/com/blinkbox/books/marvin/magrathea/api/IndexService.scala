@@ -67,10 +67,10 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
   override def reIndexLatest(): Future[Unit] =
-    reIndexTable("latest")(documentDao.getLatestDocumentCount)(documentDao.getAllLatestDocuments)
+    reIndexTable("latest")(documentDao.countLatestDocuments)(documentDao.getLatestDocuments)
 
   override def reIndexHistory(): Future[Unit] =
-    reIndexTable("history")(documentDao.getHistoryDocumentCount)(documentDao.getAllHistoryDocuments)
+    reIndexTable("history")(documentDao.countHistoryDocuments)(documentDao.getHistoryDocuments)
 
   private def searchDocument(queryText: String, docType: String, page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
