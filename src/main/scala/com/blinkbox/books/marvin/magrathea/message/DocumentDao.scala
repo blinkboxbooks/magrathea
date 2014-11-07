@@ -9,7 +9,7 @@ import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.github.tminglei.slickpg.PgJson4sSupport
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.{JNothing, JString, JValue}
+import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.httpx.Json4sJacksonSupport

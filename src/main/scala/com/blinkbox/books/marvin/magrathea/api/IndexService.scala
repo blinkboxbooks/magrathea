@@ -3,7 +3,6 @@ package com.blinkbox.books.marvin.magrathea.api
 import java.util.concurrent.Executors
 
 import com.blinkbox.books.json.DefaultFormats
-import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.ElasticConfig
 import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao}
@@ -26,6 +25,8 @@ trait IndexService {
   def searchInHistory(query: String, page: Page): Future[ListPage[JValue]]
   def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse]
   def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse]
+  def deleteHistoryIndex(docIds: String*): Future[BulkResponse]
+  def deleteLatestIndex(docIds: String*): Future[BulkResponse]
   def reIndexLatestDocument(docId: String, schema: String): Future[Boolean]
   def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean]
   def reIndexLatest(): Future[Unit]
@@ -44,7 +45,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   }
 
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-  override implicit def json4sJacksonFormats = DefaultFormats
+  override implicit val json4sJacksonFormats = DefaultFormats
 
   elasticClient.execute { create index config.index }
 
@@ -59,6 +60,10 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
 
   override def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse] =
     indexDocument(doc, docId, "history")
+
+  override def deleteHistoryIndex(docIds: String*): Future[BulkResponse] = deleteIndex("history", docIds)
+
+  override def deleteLatestIndex(docIds: String*): Future[BulkResponse] = deleteIndex("latest", docIds)
 
   override def reIndexLatestDocument(docId: String, schema: String): Future[Boolean] =
     reIndexDocument(docId, "latest", schema)(documentDao.getLatestDocumentById)
@@ -83,7 +88,16 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
 
   private def indexDocument(doc: JValue, docId: String, docType: String): Future[IndexResponse] =
     elasticClient.execute {
-      index into s"${config.index}/$docType" doc Json4sSource(deAnnotated(doc)) id docId
+      index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc)) id docId
+    }
+
+  private def deleteIndex(docType: String, docIds: Seq[String]): Future[BulkResponse] =
+    elasticClient.execute {
+      bulk(
+        docIds.map { docId =>
+          delete id docId from s"${config.index}/$docType"
+        }: _*
+      )
     }
 
   private def reIndexDocument(docId: String, docType: String, schema: String)
@@ -108,12 +122,8 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     elasticClient.execute {
       bulk(
         docs.map { doc =>
-          index into s"${config.index}/$docType" doc Json4sSource(deAnnotated(doc)) id (doc \ "_id").extract[String]
+          index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc)) id (doc \ "_id").extract[String]
         }: _*
       )
     }
-
-  private def deAnnotated(doc: JValue): JValue = DocumentAnnotator.deAnnotate(clean(doc))
-
-  private def clean(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
 }

@@ -8,7 +8,6 @@ import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -91,9 +90,9 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     case _ => Future.successful(())
   }
 
-  private def indexify(document: JValue, insertId: String, deletedIds: List[String]): Future[IndexResponse] = {
-    // TODO: Delete previous indexes
-    indexService.indexLatestDocument(document, insertId)
+  private def indexify(document: JValue, insertId: String, deletedIds: List[String]): Future[Unit] = {
+    val indexed = indexService.indexLatestDocument(document, insertId).map(_ => ())
+    if (deletedIds.nonEmpty) (indexService.deleteLatestIndex(deletedIds: _*) zip indexed).map(_ => ()) else indexed
   }
 
   private def contribufy(document: JValue, source: JValue): JValue = {
