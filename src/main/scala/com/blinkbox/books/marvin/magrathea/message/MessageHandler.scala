@@ -31,7 +31,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   override protected def handleEvent(event: Event, originalSender: ActorRef): Future[Unit] = timeTaken(for {
     incomingDoc <- parseDocument(event.body.asString())
     document = normaliseContributors(incomingDoc)
-    _ <- handleDocument(document) zip handleContributors(document \ "contributors")
+    _ <- handleDocument(document)
+    _ <- handleContributors(document)
   } yield ())
 
   // Consider the error temporary if the exception or its root cause is an IO exception, timeout or connection exception.
@@ -72,20 +73,20 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     }
   }
 
-  private def handleDocument(document: JValue): Future[Unit] = for {
-    (insertId, deletedIds) <- documentDao.storeHistoryDocument(document)
+  private def handleDocument(document: JValue, deleteOld: Boolean = true): Future[Unit] = for {
+    (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
     history <- documentDao.getDocumentHistory(document)
     mergedDoc = mergeDocuments(history)
-    (insertId, deletedIds) <- documentDao.storeLatestDocument(mergedDoc)
+    (insertId, deletedIds) <- documentDao.storeLatestDocument(mergedDoc, deleteOld)
     _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
 
-  private def handleContributors(document: JValue): Future[Unit] = document match {
+  private def handleContributors(document: JValue): Future[Unit] = document \ "contributors" match {
     case JArray(arr) =>
       logger.info("Merging contributors")
+      val source = document \ "source"
       Future.sequence(arr.map { contributor =>
-        // TODO: Contribufy the document
-        handleDocument(contributor)
+        handleDocument(contribufy(contributor, source), deleteOld = false)
       }).map(_ => ())
     case _ => Future.successful(())
   }
@@ -93,6 +94,12 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   private def indexify(document: JValue, insertId: String, deletedIds: List[String]): Future[IndexResponse] = {
     // TODO: Delete previous indexes
     indexService.indexLatestDocument(document, insertId)
+  }
+
+  private def contribufy(document: JValue, source: JValue): JValue = {
+    val schemaField: JValue = "$schema" -> schemas.contributor
+    val sourceField: JValue = "source" -> source
+    schemaField merge document merge sourceField
   }
 
   private def mergeDocuments(documents: List[JValue]): JValue = {
