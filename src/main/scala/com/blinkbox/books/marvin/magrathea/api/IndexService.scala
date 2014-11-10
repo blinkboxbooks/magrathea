@@ -5,7 +5,7 @@ import java.util.concurrent.Executors
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.ElasticConfig
-import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao}
+import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao, JsonDoc}
 import com.blinkbox.books.spray.Page
 import com.blinkbox.books.spray.v2.ListPage
 import com.sksamuel.elastic4s.ElasticClient
@@ -72,10 +72,10 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
   override def reIndexLatest(): Future[Unit] =
-    reIndexTable("latest")(documentDao.countLatestDocuments)(documentDao.getLatestDocuments)
+    reIndexTable("latest")(documentDao.countLatestDocuments, documentDao.getLatestDocuments)
 
   override def reIndexHistory(): Future[Unit] =
-    reIndexTable("history")(documentDao.countHistoryDocuments)(documentDao.getHistoryDocuments)
+    reIndexTable("history")(documentDao.countHistoryDocuments, documentDao.getHistoryDocuments)
 
   private def searchDocument(queryText: String, docType: String, page: Page): Future[ListPage[JValue]] =
     elasticClient.execute {
@@ -107,7 +107,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       case None => Future.successful(false)
     }
 
-  private def reIndexTable(table: String)(count: => () => Future[Int])(index: => (Int, Int) => Future[List[JValue]]): Future[Unit] =
+  private def reIndexTable(table: String)(count: => () => Future[Int], index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
     count().flatMap { totalDocs =>
       (0 to totalDocs by config.reIndexChunks).foldLeft(Future.successful(())) { (acc, offset) =>
         acc.flatMap { _ =>
@@ -118,11 +118,11 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       }
     }
 
-  private def indexBulkDocuments(docs: List[JValue], docType: String): Future[BulkResponse] =
+  private def indexBulkDocuments(docs: List[JsonDoc], docType: String): Future[BulkResponse] =
     elasticClient.execute {
       bulk(
         docs.map { doc =>
-          index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc)) id (doc \ "_id").extract[String]
+          index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc.toJson)) id doc.id
         }: _*
       )
     }

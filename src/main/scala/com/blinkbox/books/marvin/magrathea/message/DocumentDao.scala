@@ -17,9 +17,15 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
-import scala.slick.jdbc.{GetResult, SetParameter, StaticQueryInvoker, StaticQuery => Q}
+import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q}
 
-case class History(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) {
+trait JsonDoc {
+  def id: String
+  def schema: String
+  def toJson: JValue
+}
+
+case class History(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) extends JsonDoc {
   lazy val toJson: JValue = {
     val schemaField: JValue = "$schema" -> schema
     val classificationField: JValue = "classification" -> classification
@@ -27,7 +33,7 @@ case class History(id: String, schema: String, classification: JValue, doc: JVal
     schemaField merge classificationField merge doc merge sourceField
   }
 }
-case class Latest(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) {
+case class Latest(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) extends JsonDoc {
   lazy val toJson: JValue = {
     val schemaField: JValue = "$schema" -> schema
     val classificationField: JValue = "classification" -> classification
@@ -41,8 +47,8 @@ trait DocumentDao {
   def getLatestDocumentById(id: String, schema: Option[String] = None): Future[Option[JValue]]
   def countHistoryDocuments(): Future[Int]
   def countLatestDocuments(): Future[Int]
-  def getHistoryDocuments(count: Int, offset: Int): Future[List[JValue]]
-  def getLatestDocuments(count: Int, offset: Int): Future[List[JValue]]
+  def getHistoryDocuments(count: Int, offset: Int): Future[List[History]]
+  def getLatestDocuments(count: Int, offset: Int): Future[List[Latest]]
   def storeHistoryDocument(document: JValue, deleteOld: Boolean = true): Future[(String, List[String])]
   def storeLatestDocument(document: JValue, deleteOld: Boolean = true): Future[(String, List[String])]
   def getDocumentHistory(document: JValue): Future[List[JValue]]
@@ -100,45 +106,31 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private val insertLatestDocument = Q.query[(String, JValue, JValue, JValue), String](
     "INSERT INTO latest (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
-  private val selectDocumentHistory = Q.query[(String, JValue), History]("" +
+  private val selectDocumentHistory = Q.query[(String, JValue), History](
     "SELECT id, schema, classification, doc, source FROM history WHERE schema = ? AND classification = ?::jsonb")
 
   override def getHistoryDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
-    db.withSession { implicit session =>
-      val doc = HistoryRepo.withFilter(_.id === id).firstOption
-      (schema, doc) match {
-        case (Some(s), Some(d)) if d.schema == s => Option(d.toJson)
-        case (None, Some(d)) => Option(d.toJson)
-        case _ => None
-      }
-    }
+    db.withSession { implicit s => getDocumentOfSchema(schema, HistoryRepo.withFilter(_.id === id).firstOption) }
   }
 
   override def getLatestDocumentById(id: String, schema: Option[String]): Future[Option[JValue]] = Future {
-    db.withSession { implicit session =>
-      val doc = LatestRepo.withFilter(_.id === id).firstOption
-      (schema, doc) match {
-        case (Some(s), Some(d)) if d.schema == s => Option(d.toJson)
-        case (None, Some(d)) => Option(d.toJson)
-        case _ => None
-      }
-    }
+    db.withSession { implicit s => getDocumentOfSchema(schema, LatestRepo.withFilter(_.id === id).firstOption) }
   }
 
   override def countHistoryDocuments(): Future[Int] = Future {
-    db.withSession { implicit session => HistoryRepo.size.run }
+    db.withSession { implicit s => HistoryRepo.size.run }
   }
 
   override def countLatestDocuments(): Future[Int] = Future {
-    db.withSession { implicit session => LatestRepo.size.run }
+    db.withSession { implicit s => LatestRepo.size.run }
   }
 
-  override def getHistoryDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
-    db.withSession { implicit session => HistoryRepo.drop(offset).take(count).map(_.doc).list }
+  override def getHistoryDocuments(count: Int, offset: Int): Future[List[History]] = Future {
+    db.withSession { implicit s => HistoryRepo.drop(offset).take(count).list }
   }
 
-  override def getLatestDocuments(count: Int, offset: Int): Future[List[JValue]] = Future {
-    db.withSession { implicit session => LatestRepo.drop(offset).take(count).map(_.doc).list }
+  override def getLatestDocuments(count: Int, offset: Int): Future[List[Latest]] = Future {
+    db.withSession { implicit s => LatestRepo.drop(offset).take(count).list }
   }
 
   override def storeHistoryDocument(document: JValue, deleteOld: Boolean): Future[(String, List[String])] =
@@ -148,30 +140,41 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     storeDocument(document, deleteOld, insertLatestDocument, deleteLatestDocuments)
 
   override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
-    db.withSession { implicit session =>
-      val schema = document \ "$schema"
-      val classification = document \ "classification"
-      if (schema == JNothing || classification == JNothing) throw new IllegalArgumentException(
-        s"Cannot find document schema, classification: ${compact(render(document))}")
-      selectDocumentHistory(schema.extract[String], classification).list.map(_.toJson)
+    db.withSession { implicit s =>
+      withFields(document) match { case (schema, classification, _, _) =>
+        selectDocumentHistory(schema, classification).list.map(_.toJson)
+      }
     }
   }
 
+  private def getDocumentOfSchema(schema: Option[String], doc: Option[JsonDoc]): Option[JValue] =
+    (schema, doc) match {
+      case (Some(s), Some(d)) if d.schema == s => Option(d.toJson)
+      case (None, Some(d)) => Option(d.toJson)
+      case _ => None
+    }
+
   private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), String],
     delete: Q[JValue, String]): Future[(String, List[String])] = Future {
-    db.withTransaction { implicit session =>
-      val schema = document \ "$schema"
-      val classification = document \ "classification"
-      val source = document \ "source"
-      if (schema == JNothing || classification == JNothing || source == JNothing) throw new IllegalArgumentException(
-        s"Cannot find document schema, classification and source: ${compact(render(document))}")
-      val doc = document.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
-      val deleted = if (deleteOld) delete(extractKeySource(source)).list else List.empty
-      val inserted = insert(schema.extract[String], classification, doc, source).first
-      (inserted, deleted)
+    db.withTransaction { implicit s =>
+      withFields(document) match { case (schema, classification, doc, source) =>
+        val deleted = if (deleteOld) delete(extractKeySource(source)).list else List.empty
+        val inserted = insert(schema, classification, doc, source).first
+        (inserted, deleted)
+      }
     }
   }
 
   private def extractKeySource(source: JValue): JValue =
     source.removeDirectField("processedAt").remove(_ == source \ "system" \ "version")
+
+  private def withFields(document: JValue): (String, JValue, JValue, JValue) = {
+    val schema = document \ "$schema"
+    val classification = document \ "classification"
+    val source = document \ "source"
+    if (schema == JNothing || classification == JNothing || source == JNothing) throw new IllegalArgumentException(
+      s"Cannot find document schema, classification and source: ${compact(render(document))}")
+    val doc = document.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
+    (schema.extract[String], classification, doc, source)
+  }
 }
