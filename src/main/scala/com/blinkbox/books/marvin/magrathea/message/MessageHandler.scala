@@ -47,7 +47,6 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ = logger.info(s"Elapsed time to handle document: ${t1 - t0}ms")
   } yield res
 
-
   private def parseDocument(json: String): Future[JValue] = Future {
     logger.info("Received document")
     parse(json)

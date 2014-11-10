@@ -17,7 +17,7 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
-import scala.slick.jdbc.{StaticQuery => Q, StaticQueryInvoker, GetResult, SetParameter}
+import scala.slick.jdbc.{GetResult, SetParameter, StaticQueryInvoker, StaticQuery => Q}
 
 case class History(id: String, schema: String, classification: JValue, doc: JValue, source: JValue) {
   lazy val toJson: JValue = {
@@ -88,11 +88,11 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     r.nextString(), r.nextString(), parse(r.nextString()), parse(r.nextString()), parse(r.nextString())))
   private implicit val SetJValueParameter = SetParameter[JValue]((v, pp) => pp.setString(compact(render(v))))
 
-  private val deleteHistoryDocumentsContainingSource = Q.query[JValue, String](
+  private val deleteHistoryDocuments = Q.query[JValue, String](
     "DELETE FROM history WHERE source @> ?::jsonb RETURNING id")
 
-  private val deleteLatestDocumentsOfSchemaAndClassification = Q.query[(String, JValue), String](
-    "DELETE FROM latest WHERE schema = ? AND classification = ?::jsonb RETURNING id")
+  private val deleteLatestDocuments = Q.query[JValue, String](
+    "DELETE FROM latest WHERE source @> ?::jsonb RETURNING id")
 
   private val insertHistoryDocument = Q.query[(String, JValue, JValue, JValue), String](
     "INSERT INTO history (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
@@ -142,15 +142,10 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   }
 
   override def storeHistoryDocument(document: JValue, deleteOld: Boolean): Future[(String, List[String])] =
-    storeDocument(document, deleteOld, insertHistoryDocument) { case (_, _, source) =>
-      val keySource = source.removeDirectField("processedAt").remove(_ == source \ "system" \ "version")
-      deleteHistoryDocumentsContainingSource(keySource)
-    }
+    storeDocument(document, deleteOld, insertHistoryDocument, deleteHistoryDocuments)
 
   override def storeLatestDocument(document: JValue, deleteOld: Boolean): Future[(String, List[String])] =
-    storeDocument(document, deleteOld, insertLatestDocument) { case (schema, classification, _) =>
-      deleteLatestDocumentsOfSchemaAndClassification(schema, classification)
-    }
+    storeDocument(document, deleteOld, insertLatestDocument, deleteLatestDocuments)
 
   override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
     db.withSession { implicit session =>
@@ -162,8 +157,8 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     }
   }
 
-  private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), String])
-    (delete: => (String, JValue, JValue) => StaticQueryInvoker[_, String]): Future[(String, List[String])] = Future {
+  private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), String],
+    delete: Q[JValue, String]): Future[(String, List[String])] = Future {
     db.withTransaction { implicit session =>
       val schema = document \ "$schema"
       val classification = document \ "classification"
@@ -171,10 +166,12 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       if (schema == JNothing || classification == JNothing || source == JNothing) throw new IllegalArgumentException(
         s"Cannot find document schema, classification and source: ${compact(render(document))}")
       val doc = document.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
-      val extractedSchema = schema.extract[String]
-      val deleted = if (deleteOld) delete(extractedSchema, classification, source).list else List.empty
-      val inserted = insert(extractedSchema, classification, doc, source).first
+      val deleted = if (deleteOld) delete(extractKeySource(source)).list else List.empty
+      val inserted = insert(schema.extract[String], classification, doc, source).first
       (inserted, deleted)
     }
   }
+
+  private def extractKeySource(source: JValue): JValue =
+    source.removeDirectField("processedAt").remove(_ == source \ "system" \ "version")
 }
