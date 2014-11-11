@@ -12,7 +12,7 @@ import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.index.IndexResponse
-import org.json4s.JsonAST.{JArray, JNothing, JValue}
+import org.json4s.JsonAST.{JString, JArray, JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
@@ -174,8 +174,14 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     handler ! bookEvent(contributors)
     checkNoFailures()
     expectMsgType[Status.Success]
+    val historyCaptor = ArgumentCaptor.forClass(classOf[JValue])
     verify(documentDao, times(1)).storeHistoryDocument(any[JValue], eql(true))
-    verify(documentDao, times(2)).storeHistoryDocument(any[JValue], eql(false))
+    verify(documentDao, times(2)).storeHistoryDocument(historyCaptor.capture(), eql(false))
+    historyCaptor.getAllValues.size() shouldEqual 2
+    historyCaptor.getAllValues.get(0) \ "$schema" shouldEqual JString("ingestion.contributor.metadata.v2")
+    historyCaptor.getAllValues.get(0) \ "source" shouldEqual contributors \ "source"
+    historyCaptor.getAllValues.get(1) \ "$schema" shouldEqual JString("ingestion.contributor.metadata.v2")
+    historyCaptor.getAllValues.get(1) \ "source" shouldEqual contributors \ "source"
     verify(documentDao, times(1)).storeLatestDocument(any[JValue], eql(true))
     verify(documentDao, times(2)).storeLatestDocument(any[JValue], eql(false))
   }
