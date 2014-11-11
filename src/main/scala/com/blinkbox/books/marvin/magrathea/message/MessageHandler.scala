@@ -1,5 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
+import java.util.UUID
+
 import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
@@ -89,9 +91,9 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     case _ => Future.successful(())
   }
 
-  private def indexify(document: JValue, insertId: String, deletedIds: List[String]): Future[Unit] = {
-    val indexed = indexService.indexLatestDocument(document, insertId).map(_ => ())
-    if (deletedIds.nonEmpty) (indexService.deleteLatestIndex(deletedIds: _*) zip indexed).map(_ => ()) else indexed
+  private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
+    val indexed = indexService.indexLatestDocument(insertId, document).map(_ => ())
+    if (deletedIds.nonEmpty) (indexService.deleteLatestIndex(deletedIds) zip indexed).map(_ => ()) else indexed
   }
 
   private def contribufy(document: JValue, source: JValue): JValue = {

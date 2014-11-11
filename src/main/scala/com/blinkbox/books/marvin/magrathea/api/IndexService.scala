@@ -1,11 +1,12 @@
 package com.blinkbox.books.marvin.magrathea.api
 
+import java.util.UUID
 import java.util.concurrent.Executors
 
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.ElasticConfig
-import com.blinkbox.books.marvin.magrathea.message.{DocumentAnnotator, DocumentDao, JsonDoc}
+import com.blinkbox.books.marvin.magrathea.message._
+import com.blinkbox.books.marvin.magrathea.{ElasticConfig, JsonDoc}
 import com.blinkbox.books.spray.Page
 import com.blinkbox.books.spray.v2.ListPage
 import com.sksamuel.elastic4s.ElasticClient
@@ -23,12 +24,12 @@ import scala.concurrent.{ExecutionContext, Future}
 trait IndexService {
   def searchInLatest(query: String, page: Page): Future[ListPage[JValue]]
   def searchInHistory(query: String, page: Page): Future[ListPage[JValue]]
-  def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse]
-  def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse]
-  def deleteHistoryIndex(docIds: String*): Future[BulkResponse]
-  def deleteLatestIndex(docIds: String*): Future[BulkResponse]
-  def reIndexLatestDocument(docId: String, schema: String): Future[Boolean]
-  def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean]
+  def indexLatestDocument(docId: UUID, doc: JValue): Future[IndexResponse]
+  def indexHistoryDocument(docId: UUID, doc: JValue): Future[IndexResponse]
+  def deleteLatestIndex(docIds: List[UUID]): Future[BulkResponse]
+  def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse]
+  def reIndexLatestDocument(docId: UUID, schema: String): Future[Boolean]
+  def reIndexHistoryDocument(docId: UUID, schema: String): Future[Boolean]
   def reIndexLatest(): Future[Unit]
   def reIndexHistory(): Future[Unit]
 }
@@ -36,12 +37,8 @@ trait IndexService {
 class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, documentDao: DocumentDao)
   extends IndexService with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
-  class Json4sSource(root: JValue) extends DocumentSource {
+  case class Json4sSource(root: JValue) extends DocumentSource {
     def json = compact(render(root))
-  }
-
-  object Json4sSource {
-    def apply(root: JValue) = new Json4sSource(root)
   }
 
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
@@ -55,20 +52,20 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def searchInHistory(queryText: String, page: Page): Future[ListPage[JValue]] =
     searchDocument(queryText, "history", page)
 
-  override def indexLatestDocument(doc: JValue, docId: String): Future[IndexResponse] =
-    indexDocument(doc, docId, "latest")
+  override def indexLatestDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
+    indexDocument(docId, doc, "latest")
 
-  override def indexHistoryDocument(doc: JValue, docId: String): Future[IndexResponse] =
-    indexDocument(doc, docId, "history")
+  override def indexHistoryDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
+    indexDocument(docId, doc, "history")
 
-  override def deleteHistoryIndex(docIds: String*): Future[BulkResponse] = deleteIndex("history", docIds)
+  override def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "history")
 
-  override def deleteLatestIndex(docIds: String*): Future[BulkResponse] = deleteIndex("latest", docIds)
+  override def deleteLatestIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "latest")
 
-  override def reIndexLatestDocument(docId: String, schema: String): Future[Boolean] =
+  override def reIndexLatestDocument(docId: UUID, schema: String): Future[Boolean] =
     reIndexDocument(docId, "latest", schema)(documentDao.getLatestDocumentById)
 
-  override def reIndexHistoryDocument(docId: String, schema: String): Future[Boolean] =
+  override def reIndexHistoryDocument(docId: UUID, schema: String): Future[Boolean] =
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
   override def reIndexLatest(): Future[Unit] =
@@ -86,12 +83,12 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       ListPage(hits, lastPage)
     }
 
-  private def indexDocument(doc: JValue, docId: String, docType: String): Future[IndexResponse] =
+  private def indexDocument(docId: UUID, doc: JValue, docType: String): Future[IndexResponse] =
     elasticClient.execute {
       index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc)) id docId
     }
 
-  private def deleteIndex(docType: String, docIds: Seq[String]): Future[BulkResponse] =
+  private def deleteIndex(docIds: List[UUID], docType: String): Future[BulkResponse] =
     elasticClient.execute {
       bulk(
         docIds.map { docId =>
@@ -100,14 +97,15 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       )
     }
 
-  private def reIndexDocument(docId: String, docType: String, schema: String)
-    (getDocumentById: => (String, Option[String]) => Future[Option[JValue]]): Future[Boolean] =
+  private def reIndexDocument(docId: UUID, docType: String, schema: String)
+    (getDocumentById: => (UUID, Option[String]) => Future[Option[JsonDoc]]): Future[Boolean] =
     getDocumentById(docId, Option(schema)).flatMap {
-      case Some(doc) => indexDocument(doc, docId, docType).map(_ => true)
+      case Some(doc) => indexDocument(docId, doc.toJson, docType).map(_ => true)
       case None => Future.successful(false)
     }
 
-  private def reIndexTable(table: String)(count: => () => Future[Int], index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
+  private def reIndexTable(table: String)(count: => () => Future[Int],
+                                          index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
     count().flatMap { totalDocs =>
       (0 to totalDocs by config.reIndexChunks).foldLeft(Future.successful(())) { (acc, offset) =>
         acc.flatMap { _ =>

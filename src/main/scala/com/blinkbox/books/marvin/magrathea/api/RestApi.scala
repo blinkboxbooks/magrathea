@@ -1,5 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.api
 
+import java.util.UUID
+
 import akka.actor.ActorRefFactory
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message.DocumentDao
@@ -12,6 +14,7 @@ import spray.http.StatusCodes._
 import spray.routing._
 import spray.util.LoggingContext
 
+import scala.util.Try
 import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
@@ -33,36 +36,44 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
 
   override val getLatestBookById = get {
     path("books" / Segment) { id =>
-      onSuccess(documentDao.getLatestDocumentById(id, Option(schemas.book))) {
-        case Some(doc) => uncacheable(doc)
-        case _ => uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getLatestDocumentById(uuid, Option(schemas.book))) {
+          case Some(doc) => uncacheable(doc.toJson)
+          case _ => uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
+        }
       }
     }
   }
 
   override val reIndexBook = put {
     path("books" / Segment / "reindex") { id =>
-      onSuccess(indexService.reIndexLatestDocument(id, schemas.book)) { found =>
-        if (found) uncacheable(OK, None)
-        else uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
+      withUUID(id) { uuid =>
+        onSuccess(indexService.reIndexLatestDocument(uuid, schemas.book)) { found =>
+          if (found) uncacheable(OK, None)
+          else uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
+        }
       }
     }
   }
 
   override val getLatestContributorById = get {
     path("contributors" / Segment) { id =>
-      onSuccess(documentDao.getLatestDocumentById(id, Option(schemas.contributor))) {
-        case Some(doc) => uncacheable(doc)
-        case _ => uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getLatestDocumentById(uuid, Option(schemas.contributor))) {
+          case Some(doc) => uncacheable(doc.toJson)
+          case _ => uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
+        }
       }
     }
   }
 
   override val reIndexContributor = put {
     path("contributors" / Segment / "reindex") { id =>
-      onSuccess(indexService.reIndexLatestDocument(id, schemas.contributor)) { found =>
-        if (found) uncacheable(OK, None)
-        else uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
+      withUUID(id) { uuid =>
+        onSuccess(indexService.reIndexLatestDocument(uuid, schemas.contributor)) { found =>
+          if (found) uncacheable(OK, None)
+          else uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
+        }
       }
     }
   }
@@ -118,5 +129,11 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     case NonFatal(e) =>
       log.error(e, "Unhandled error")
       uncacheable(InternalServerError, None)
+  }
+
+  /** TODO: Move this to common-spray */
+  private def withUUID(rawId: String): Directive1[UUID] = Try(UUID.fromString(rawId)).toOption match {
+    case Some(uuid) => provide(uuid)
+    case None => uncacheable(BadRequest, Error("InvalidUUID", "The requested id is not a valid UUID."))
   }
 }
