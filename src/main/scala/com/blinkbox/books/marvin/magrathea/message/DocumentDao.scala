@@ -17,7 +17,7 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
-import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q}
+import scala.slick.jdbc.{GetResult, SetParameter, StaticQueryInvoker, StaticQuery => Q}
 
 trait DocumentDao {
   def getHistoryDocumentById(id: UUID, schema: Option[String] = None): Future[Option[History]]
@@ -75,8 +75,8 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private val deleteHistoryDocuments = Q.query[JValue, UUID](
     "DELETE FROM history WHERE source @> ?::jsonb RETURNING id")
 
-  private val deleteLatestDocuments = Q.query[JValue, UUID](
-    "DELETE FROM latest WHERE source @> ?::jsonb RETURNING id")
+  private val deleteLatestDocuments = Q.query[(JValue, JValue), UUID](
+    "DELETE FROM latest WHERE source @> ?::jsonb OR classification = ?::jsonb RETURNING id")
 
   private val insertHistoryDocument = Q.query[(String, JValue, JValue, JValue), UUID](
     "INSERT INTO history (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
@@ -112,10 +112,14 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   }
 
   override def storeHistoryDocument(document: JValue, deleteOld: Boolean): Future[(UUID, List[UUID])] =
-    storeDocument(document, deleteOld, insertHistoryDocument, deleteHistoryDocuments)
+    storeDocument(document, deleteOld, insertHistoryDocument) { case (keySource, _) =>
+      deleteHistoryDocuments(keySource)
+    }
 
   override def storeLatestDocument(document: JValue, deleteOld: Boolean): Future[(UUID, List[UUID])] =
-    storeDocument(document, deleteOld, insertLatestDocument, deleteLatestDocuments)
+    storeDocument(document, deleteOld, insertLatestDocument) { case (keySource, classification) =>
+      deleteLatestDocuments(keySource, classification)
+    }
 
   override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
     db.withSession { implicit s =>
@@ -132,11 +136,11 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       case _ => None
     }
 
-  private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), UUID],
-    delete: Q[JValue, UUID]): Future[(UUID, List[UUID])] = Future {
+  private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), UUID])
+    (delete: => (JValue, JValue) => StaticQueryInvoker[_, UUID]): Future[(UUID, List[UUID])] = Future {
     db.withTransaction { implicit s =>
       withFields(document) match { case (schema, classification, doc, source) =>
-        val deleted = if (deleteOld) delete(extractKeySource(source)).list else List.empty
+        val deleted = if (deleteOld) delete(extractKeySource(source), classification).list else List.empty
         val inserted = insert(schema, classification, doc, source).first
         (inserted, deleted)
       }
