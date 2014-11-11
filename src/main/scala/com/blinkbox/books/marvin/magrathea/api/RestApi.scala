@@ -35,7 +35,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("books" / Segment) { id =>
       onSuccess(documentDao.getLatestDocumentById(id, Option(schemas.book))) {
         case Some(doc) => uncacheable(doc)
-        case _ => uncacheable(NotFound, Error("not_found", "The requested book was not found."))
+        case _ => uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
       }
     }
   }
@@ -44,7 +44,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("books" / Segment / "reindex") { id =>
       onSuccess(indexService.reIndexLatestDocument(id, schemas.book)) { found =>
         if (found) uncacheable(OK, None)
-        else uncacheable(NotFound, Error("not_found", "The requested book was not found."))
+        else uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
       }
     }
   }
@@ -53,7 +53,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("contributors" / Segment) { id =>
       onSuccess(documentDao.getLatestDocumentById(id, Option(schemas.contributor))) {
         case Some(doc) => uncacheable(doc)
-        case _ => uncacheable(NotFound, Error("not_found", "The requested contributor was not found."))
+        case _ => uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
       }
     }
   }
@@ -62,7 +62,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     path("contributors" / Segment / "reindex") { id =>
       onSuccess(indexService.reIndexLatestDocument(id, schemas.contributor)) { found =>
         if (found) uncacheable(OK, None)
-        else uncacheable(NotFound, Error("not_found", "The requested contributor was not found."))
+        else uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
       }
     }
   }
