@@ -28,11 +28,84 @@ paths:
                 "code": "NotFound",
                 "message": "The requested book was not found."
               }
+
   /books/{bookId}/history: {}
+
+  /books/{bookId}/reindex:
+    put:
+      description: Re-indexes the details of a specific book by id.
+      parameters:
+        - name: bookId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The book has been re-indexed.
+        404:
+          description: This ID does not have an associated book.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested book was not found."
+              }
+
+  /contributors/{contributorId}:
+    get:
+      description: Returns details about a specific contributor by id.
+      parameters:
+        - name: contributorId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The details of the book.
+          schema: schemas/ingestion/contributor/metadata/v2.schema.json
+        404:
+          description: This ID does not have an associated contributor.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested contributor was not found."
+              }
+
+  /contributors/{contributorId}/history: {}
+
+  /contributors/{contributorId}/reindex:
+    put:
+      description: Re-indexes the details of a specific contributor by id.
+      parameters:
+        - name: contributorId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The contributor has been re-indexed.
+        404:
+          description: This ID does not have an associated contributor.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested contributor was not found."
+              }
 
   /search?q={q}&count={count}&offet={offset}:
     get:
-      description: Search for contributors or books with lucene-style syntax.
+      description: Search for books or contributors with lucene-style syntax.
       parameters:
         - name: q
           in: query
@@ -71,6 +144,25 @@ paths:
                 "code": "InvalidParameters",
                 "message": "Query parameter is missing."
               }
+
+  /search/reindex/latest:
+    put:
+      description: Re-indexes the entire latest document database.
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        202:
+          description: The latest document database re-indexing has been started.
+
+  /search/reindex/history:
+    put:
+      description: Re-indexes the entire history document database.
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        202:
+          description: The history document database re-indexing has been started.
+
 definitions:
   ErrorStructure:
     title: A document describing an error response code from the server.
