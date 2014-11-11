@@ -7,10 +7,11 @@ import com.blinkbox.books.config.DatabaseConfig
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
+import com.blinkbox.books.marvin.magrathea.Helpers._
 import com.blinkbox.books.marvin.magrathea.{History, JsonDoc, Latest, SchemaConfig}
 import com.github.tminglei.slickpg.PgJson4sSupport
 import com.typesafe.scalalogging.slf4j.StrictLogging
-import org.json4s.JsonAST.{JNothing, JValue}
+import org.json4s.JsonAST.JValue
 import org.json4s.jackson.JsonMethods
 import spray.httpx.Json4sJacksonSupport
 
@@ -149,14 +150,4 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
 
   private def extractKeySource(source: JValue): JValue =
     source.removeDirectField("processedAt").remove(_ == source \ "system" \ "version")
-
-  private def withFields(document: JValue): (String, JValue, JValue, JValue) = {
-    val schema = document \ "$schema"
-    val classification = document \ "classification"
-    val source = document \ "source"
-    if (schema == JNothing || classification == JNothing || source == JNothing) throw new IllegalArgumentException(
-      s"Cannot find document schema, classification and source: ${compact(render(document))}")
-    val doc = document.removeDirectField("$schema").removeDirectField("classification").removeDirectField("source")
-    (schema.extract[String], classification, doc, source)
-  }
 }

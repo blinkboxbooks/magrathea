@@ -1,6 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import java.net.URL
+import java.util.UUID
 
 import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
@@ -42,32 +43,49 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   "The service" should "return 200 with the requested book, if it exists" in {
     val book = sampleBook()
-    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(Some(book)))
-    Get("/books/abc") ~> routes ~> check {
+    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(Some(latest(book))))
+    Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(book))
     }
   }
 
+  it should "return 400 if the book id is not a UUID" in {
+    Get("/books/xxx") ~> routes ~> check {
+      status shouldEqual BadRequest
+    }
+  }
+
   it should "return 404 if the book does not exist" in {
-    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(None))
-    Get("/books/oops") ~> routes ~> check {
+    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(None))
+    Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }
 
+
   it should "return 200 with the requested contributor, if it exists" in {
     val contributor = sampleContributor()
-    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(Some(contributor)))
-    Get("/contributors/abc") ~> routes ~> check {
+    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(Some(latest(contributor))))
+    Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(contributor))
     }
   }
 
+  it should "return 400 if the contributor id is not a UUID" in {
+    Get("/contributors/xxx") ~> routes ~> check {
+      status shouldEqual BadRequest
+    }
+  }
+
   it should "return 404 if the contributor does not exist" in {
-    when(documentDao.getLatestDocumentById(anyString, any[Option[String]])).thenReturn(Future.successful(None))
-    Get("/contributors/oops") ~> routes ~> check {
+    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(None))
+    Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }

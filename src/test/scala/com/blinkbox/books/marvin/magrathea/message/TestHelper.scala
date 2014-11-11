@@ -1,14 +1,23 @@
 package com.blinkbox.books.marvin.magrathea.message
 
+import java.util.UUID
+
+import com.blinkbox.books.json.DefaultFormats
+import com.blinkbox.books.marvin.magrathea.Helpers._
+import com.blinkbox.books.marvin.magrathea.{History, Latest}
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST.{JNothing, JString, JValue}
 import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods
+import spray.httpx.Json4sJacksonSupport
 
 import scala.language.implicitConversions
 import scala.util.Random
 
-trait TestHelper {
+trait TestHelper extends Json4sJacksonSupport with JsonMethods {
+  override implicit val json4sJacksonFormats = DefaultFormats
+
   implicit def dateTime2JValue(d: DateTime) = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
 
   def generateId = BigInt(130, Random).toString(16)
@@ -54,9 +63,13 @@ trait TestHelper {
   def annotatedSampleBook(extraContent: JValue = JNothing): JValue =
     DocumentAnnotator.annotate(sampleBook(extraContent))
 
-  def lookupKeyMatch(extraContent: JValue = JNothing): JValue = {
-    ("id" -> "7e93a26396bde6994ccefaf3da003659") ~
-    ("key" -> List("whatever-does-not-matter")) ~
-    ("value" -> ("_id" -> "7e93a26396bde6994ccefaf3da003659") ~ ("_rev" -> "1-da5a08470ffe6bca22174a02f5fd5714"))
-  }
+  def latest(document: JValue): Latest =
+    withFields(document) match { case (schema, classification, doc, source) =>
+      Latest(UUID.randomUUID(), schema, classification, doc, source)
+    }
+
+  def history(document: JValue): History =
+    withFields(document) match { case (schema, classification, doc, source) =>
+      History(UUID.randomUUID(), schema, classification, doc, source)
+    }
 }

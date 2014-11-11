@@ -1,6 +1,5 @@
 package com.blinkbox.books.marvin.magrathea.message
 
-import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator._
 import org.json4s.JsonAST._
@@ -15,8 +14,6 @@ import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
 class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers with TestHelper {
-  implicit val json4sJacksonFormats = DefaultFormats
-
   "The document annotator" should "refuse to annotate a document without source" in {
     val doc = sampleBook().removeDirectField("source")
     intercept[MissingSourceException] {
