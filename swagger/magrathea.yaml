@@ -29,8 +29,6 @@ paths:
                 "message": "The requested book was not found."
               }
 
-  /books/{bookId}/history: {}
-
   /books/{bookId}/reindex:
     put:
       description: Re-indexes the details of a specific book by id.
@@ -77,8 +75,6 @@ paths:
                 "code": "NotFound",
                 "message": "The requested contributor was not found."
               }
-
-  /contributors/{contributorId}/history: {}
 
   /contributors/{contributorId}/reindex:
     put:
