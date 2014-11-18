@@ -13,8 +13,8 @@ import scala.concurrent.ExecutionContext
 
 class MessageListener(config: AppConfig, indexService: IndexService, documentDao: DocumentDao)
   (implicit system: ActorSystem, ex: ExecutionContext, timeout: Timeout) {
-  val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitMq)
-  val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitMq)
+  val consumerConnection = RabbitMq.reliableConnection(config.listener.rabbitmq)
+  val publisherConnection = RabbitMq.recoveredConnection(config.listener.rabbitmq)
 
   val distributor = new DocumentDistributor(config.listener.distributor, config.schemas)
 

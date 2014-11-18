@@ -23,12 +23,12 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
 
     val apiSystem = ActorSystem("magrathea-api-system", config)
     val apiExCtx = DiagnosticExecutionContext(apiSystem.dispatcher)
-    val apiTimeout = Timeout(appConfig.service.api.timeout)
+    val apiTimeout = Timeout(appConfig.api.timeout)
     sys.addShutdownHook(apiSystem.shutdown())
     val apiDocumentDao = new PostgresDocumentDao(appConfig.db, appConfig.schemas)
     val apiIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, apiDocumentDao)
     val service = apiSystem.actorOf(Props(classOf[WebService], appConfig, apiDocumentDao, apiIndexService), "magrathea-api")
-    val localUrl = appConfig.service.api.localUrl
+    val localUrl = appConfig.api.localUrl
     HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))(apiSystem, apiExCtx, apiTimeout)
 
     val msgSystem = ActorSystem("magrathea-msg-system", config)
