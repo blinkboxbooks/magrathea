@@ -9,7 +9,7 @@ import spray.httpx.Json4sJacksonSupport
 object Helpers extends Json4sJacksonSupport with JsonMethods {
   override implicit val json4sJacksonFormats = DefaultFormats
 
-  def withFields(document: JValue): (String, JValue, JValue, JValue) = {
+  def extractFieldsFrom(document: JValue): (String, JValue, JValue, JValue) = {
     val schema = document \ "$schema"
     val classification = document \ "classification"
     val source = document \ "source"

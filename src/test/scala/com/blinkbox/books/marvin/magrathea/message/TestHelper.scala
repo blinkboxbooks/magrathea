@@ -64,12 +64,12 @@ trait TestHelper extends Json4sJacksonSupport with JsonMethods {
     DocumentAnnotator.annotate(sampleBook(extraContent))
 
   def latest(document: JValue): Latest =
-    withFields(document) match { case (schema, classification, doc, source) =>
+    extractFieldsFrom(document) match { case (schema, classification, doc, source) =>
       Latest(UUID.randomUUID(), schema, classification, doc, source)
     }
 
   def history(document: JValue): History =
-    withFields(document) match { case (schema, classification, doc, source) =>
+    extractFieldsFrom(document) match { case (schema, classification, doc, source) =>
       History(UUID.randomUUID(), schema, classification, doc, source)
     }
 }

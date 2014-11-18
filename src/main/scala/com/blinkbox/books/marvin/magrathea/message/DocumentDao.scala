@@ -124,7 +124,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
 
   override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
     db.withSession { implicit s =>
-      withFields(document) match { case (schema, classification, _, _) =>
+      extractFieldsFrom(document) match { case (schema, classification, _, _) =>
         selectDocumentHistory(schema, classification).list.map(_.toJson)
       }
     }
@@ -140,7 +140,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private def storeDocument(document: JValue, deleteOld: Boolean, insert: Q[(String, JValue, JValue, JValue), UUID])
     (delete: => (JValue, JValue) => StaticQueryInvoker[_, UUID]): Future[(UUID, List[UUID])] = Future {
     db.withTransaction { implicit s =>
-      withFields(document) match { case (schema, classification, doc, source) =>
+      extractFieldsFrom(document) match { case (schema, classification, doc, source) =>
         val deleted = if (deleteOld) delete(extractKeySource(source), classification).list else List.empty
         val inserted = insert(schema, classification, doc, source).first
         (inserted, deleted)
