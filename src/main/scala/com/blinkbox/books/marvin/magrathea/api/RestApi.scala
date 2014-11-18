@@ -3,9 +3,10 @@ package com.blinkbox.books.marvin.magrathea.api
 import java.util.UUID
 
 import akka.actor.ActorRefFactory
+import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.logging.DiagnosticExecutionContext
+import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.message.DocumentDao
-import com.blinkbox.books.marvin.magrathea.{SchemaConfig, ServiceConfig}
 import com.blinkbox.books.spray.v1.Error
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
 import org.slf4j.LoggerFactory
@@ -27,11 +28,11 @@ trait RestRoutes extends HttpService {
   def reIndexHistorySearch: Route
 }
 
-class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: DocumentDao, indexService: IndexService)
+class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao, indexService: IndexService)
   (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport {
 
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
-  implicit val timeout = config.api.timeout
+  implicit val timeout = config.timeout
   implicit val log = LoggerFactory.getLogger(classOf[RestApi])
 
   override val getLatestBookById = get {
@@ -114,7 +115,7 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
     }
   }
 
-  val routes = rootPath(config.api.localUrl.path) {
+  val routes = rootPath(config.localUrl.path) {
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
@@ -131,7 +132,6 @@ class RestApi(config: ServiceConfig, schemas: SchemaConfig, documentDao: Documen
       uncacheable(InternalServerError, None)
   }
 
-  /** TODO: Move this to common-spray */
   private def withUUID(rawId: String): Directive1[UUID] = Try(UUID.fromString(rawId)).toOption match {
     case Some(uuid) => provide(uuid)
     case None => uncacheable(BadRequest, Error("InvalidUUID", "The requested id is not a valid UUID."))
