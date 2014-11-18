@@ -1,5 +1,16 @@
 # Change log
 
+## 0.2.0 ([#6](https://git.mobcastdev.com/Marvin/magrathea/pull/6) 2014-11-18 17:34:23)
+
+Postgres
+
+### Breaking Changes
+
+* Switched from CouchDB to PostgreSQL 9.4beta3
+* Greatly refactored and simplified `MessageHandler`
+* Simplified `AppConfig`
+* Updated Swagger doc
+
 ## 0.1.0 ([#5](https://git.mobcastdev.com/Marvin/magrathea/pull/5) 2014-10-31 16:39:27)
 
 Search & Indexing
