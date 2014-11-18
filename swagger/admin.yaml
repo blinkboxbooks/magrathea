@@ -1,0 +1,176 @@
+---
+swagger: "2.0"
+info:
+  title: Magrathea API
+  description: blinkbox Books' content management system's API.
+  version: 0.0.4
+paths:
+  /books/{bookId}:
+    get:
+      description: Returns details about a specific book by id.
+      parameters:
+        - name: bookId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The details of the book.
+          schema: schemas/ingestion/book/metadata/v2.schema.json
+        404:
+          description: This ID does not have an associated book.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested book was not found."
+              }
+
+  /books/{bookId}/reindex:
+    put:
+      description: Re-indexes the details of a specific book by id.
+      parameters:
+        - name: bookId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The book has been re-indexed.
+        404:
+          description: This ID does not have an associated book.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested book was not found."
+              }
+
+  /contributors/{contributorId}:
+    get:
+      description: Returns details about a specific contributor by id.
+      parameters:
+        - name: contributorId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The details of the book.
+          schema: schemas/ingestion/contributor/metadata/v2.schema.json
+        404:
+          description: This ID does not have an associated contributor.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested contributor was not found."
+              }
+
+  /contributors/{contributorId}/reindex:
+    put:
+      description: Re-indexes the details of a specific contributor by id.
+      parameters:
+        - name: contributorId
+          in: path
+          type: string
+          required: true
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: The contributor has been re-indexed.
+        404:
+          description: This ID does not have an associated contributor.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "NotFound",
+                "message": "The requested contributor was not found."
+              }
+
+  /search?q={q}&count={count}&offet={offset}:
+    get:
+      description: Search for books or contributors with lucene-style syntax.
+      parameters:
+        - name: q
+          in: query
+          type: string
+          description: The lucene-style query string passed to elasticsearch as a query parameter.
+          required: true
+        - name: count
+          in: query
+          type: integer
+          minimum: 1
+          default: 25
+        - name: offset
+          in: query
+          type: integer
+          minimum: 0
+          default: 0
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        200:
+          description: Book and Contributor results matching the query given.
+          # TODO: Write Schema
+          schema: {}
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "items": [],
+                "lastPage": true
+              }
+        400:
+          description: No query string or invalid count or offset value.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "InvalidParameters",
+                "message": "Query parameter is missing."
+              }
+
+  /search/reindex/latest:
+    put:
+      description: Re-indexes the entire latest document database.
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        202:
+          description: The latest document database re-indexing has been started.
+
+  /search/reindex/history:
+    put:
+      description: Re-indexes the entire history document database.
+      produces:
+        - application/vnd.blinkbox.books.v2+json
+      responses:
+        202:
+          description: The history document database re-indexing has been started.
+
+definitions:
+  ErrorStructure:
+    title: A document describing an error response code from the server.
+    type: object
+    required:
+      - code
+      - message
+    properties:
+      code:
+        title: A snake case, error code which has the same meaning across the entire blinkbox Books platform.
+        type: string
+        format: "^[a-z](?:[a-z_]*[a-z])?$"
+      message:
+        title: A human readable string describing the error which occured. Will be technical in nature, should *never* be displayed to customers in a UI.
+        type: string

@@ -11,10 +11,9 @@ import com.typesafe.config.Config
 
 import scala.concurrent.duration._
 
-case class AppConfig(service: ServiceConfig, listener: ListenerConfig,
-  couchDbUrl: URL, elasticsearch: ElasticConfig, schemas: SchemaConfig)
-case class ServiceConfig(api: ApiConfig)
-case class ListenerConfig(rabbitMq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
+case class AppConfig(api: ApiConfig, listener: ListenerConfig,
+  elasticsearch: ElasticConfig, schemas: SchemaConfig, db: DatabaseConfig)
+case class ListenerConfig(rabbitmq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
   distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
 case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
@@ -27,17 +26,11 @@ case class ElasticConfig(url: URL, index: String, reIndexChunks: Int) {
 object AppConfig {
   val prefix = "service.magrathea"
   def apply(config: Config) = new AppConfig(
-    ServiceConfig(config, s"$prefix.api.public"),
+    ApiConfig(config, s"$prefix.api.public"),
     ListenerConfig(config, s"$prefix.messageListener"),
-    config.getHttpUrl(s"$prefix.couchdb.url"),
     ElasticConfig(config, s"$prefix.elasticsearch"),
-    SchemaConfig(config, s"$prefix.schema")
-  )
-}
-
-object ServiceConfig {
-  def apply(config: Config, prefix: String) = new ServiceConfig(
-    ApiConfig(config, prefix)
+    SchemaConfig(config, s"$prefix.schema"),
+    DatabaseConfig(config, s"$prefix.db")
   )
 }
 

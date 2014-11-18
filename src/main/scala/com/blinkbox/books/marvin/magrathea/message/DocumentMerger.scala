@@ -88,8 +88,7 @@ object DocumentMerger {
   }
 
   /** Strip the keys that are irrelevant to the merge process. */
-  private def purify(doc: JValue): JValue = doc.removeDirectField("_id").removeDirectField("_rev")
-    .removeDirectField("$schema").removeDirectField("classification")
+  private def purify(doc: JValue): JValue = doc.removeDirectField("$schema").removeDirectField("classification")
 
   private def doMerge(valA: JValue, valB: JValue, src: Sources): JValue = (valA, valB) match {
     case (JObject(xs), JObject(ys)) => JObject(mergeFields(xs, ys, src))

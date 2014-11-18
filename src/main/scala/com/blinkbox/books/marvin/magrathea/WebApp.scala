@@ -5,7 +5,7 @@ import akka.util.Timeout
 import com.blinkbox.books.config.Configuration
 import com.blinkbox.books.logging.{DiagnosticExecutionContext, Loggers}
 import com.blinkbox.books.marvin.magrathea.api.{DefaultIndexService, WebService}
-import com.blinkbox.books.marvin.magrathea.message.{DefaultDocumentDao, MessageListener}
+import com.blinkbox.books.marvin.magrathea.message.{MessageListener, PostgresDocumentDao}
 import com.blinkbox.books.spray._
 import com.sksamuel.elastic4s.ElasticClient
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -23,19 +23,19 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
 
     val apiSystem = ActorSystem("magrathea-api-system", config)
     val apiExCtx = DiagnosticExecutionContext(apiSystem.dispatcher)
-    val apiTimeout = Timeout(appConfig.service.api.timeout)
+    val apiTimeout = Timeout(appConfig.api.timeout)
     sys.addShutdownHook(apiSystem.shutdown())
-    val apiDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(apiSystem)
+    val apiDocumentDao = new PostgresDocumentDao(appConfig.db, appConfig.schemas)
     val apiIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, apiDocumentDao)
     val service = apiSystem.actorOf(Props(classOf[WebService], appConfig, apiDocumentDao, apiIndexService), "magrathea-api")
-    val localUrl = appConfig.service.api.localUrl
+    val localUrl = appConfig.api.localUrl
     HttpServer(Http.Bind(service, localUrl.getHost, port = localUrl.effectivePort))(apiSystem, apiExCtx, apiTimeout)
 
     val msgSystem = ActorSystem("magrathea-msg-system", config)
     val msgExCtx = DiagnosticExecutionContext(msgSystem.dispatcher)
     val msgTimeout = Timeout(appConfig.listener.actorTimeout)
     sys.addShutdownHook(msgSystem.shutdown())
-    val msgDocumentDao = new DefaultDocumentDao(appConfig.couchDbUrl, appConfig.schemas)(msgSystem)
+    val msgDocumentDao = new PostgresDocumentDao(appConfig.db, appConfig.schemas)
     val msgIndexService = new DefaultIndexService(elasticClient, appConfig.elasticsearch, msgDocumentDao)
     val messageListener = new MessageListener(appConfig, msgIndexService, msgDocumentDao)(msgSystem, msgExCtx, msgTimeout)
     messageListener.start()
