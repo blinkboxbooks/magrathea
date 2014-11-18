@@ -4,8 +4,8 @@ import java.net.URL
 import java.util.UUID
 
 import com.blinkbox.books.config.ApiConfig
+import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
-import com.blinkbox.books.marvin.magrathea.{SchemaConfig, ServiceConfig}
 import com.blinkbox.books.spray.v2
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.jackson.JsonMethods
@@ -27,12 +27,10 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   implicit val actorRefFactory = system
   implicit val routeTestTimeout = RouteTestTimeout(5.seconds)
 
-  val config = mock[ServiceConfig]
-  val apiConfig = mock[ApiConfig]
-  when(apiConfig.localUrl).thenReturn(new URL("http://localhost"))
-  when(apiConfig.externalUrl).thenReturn(new URL("http://localhost"))
-  when(apiConfig.timeout).thenReturn(5.seconds)
-  when(config.api).thenReturn(apiConfig)
+  val config = mock[ApiConfig]
+  when(config.localUrl).thenReturn(new URL("http://localhost"))
+  when(config.externalUrl).thenReturn(new URL("http://localhost"))
+  when(config.timeout).thenReturn(5.seconds)
   val schemas = mock[SchemaConfig]
   when(schemas.book).thenReturn("ingestion.book.metadata.v2")
   when(schemas.contributor).thenReturn("ingestion.contributor.metadata.v2")
