@@ -44,8 +44,6 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   override implicit val json4sJacksonFormats = DefaultFormats
 
-  elasticClient.execute { create index config.index }
-
   override def searchInLatest(queryText: String, page: Page): Future[ListPage[JValue]] =
     searchDocument(queryText, "latest", page)
 
