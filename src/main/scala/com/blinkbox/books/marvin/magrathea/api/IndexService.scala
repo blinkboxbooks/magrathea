@@ -38,7 +38,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   extends IndexService with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   case class Json4sSource(root: JValue) extends DocumentSource {
-    def json = compact(render(root))
+    val json = compact(render(root))
   }
 
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
