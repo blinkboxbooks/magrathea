@@ -141,14 +141,14 @@ paths:
                 "message": "Query parameter is missing."
               }
 
-  /search/reindex/latest:
+  /search/reindex/current:
     put:
-      description: Re-indexes the entire latest document database.
+      description: Re-indexes the entire current document database.
       produces:
         - application/vnd.blinkbox.books.v2+json
       responses:
         202:
-          description: The latest document database re-indexing has been started.
+          description: The current document database re-indexing has been started.
 
   /search/reindex/history:
     put:

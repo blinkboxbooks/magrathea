@@ -8,7 +8,7 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.Helpers._
-import com.blinkbox.books.marvin.magrathea.{History, JsonDoc, Latest, SchemaConfig}
+import com.blinkbox.books.marvin.magrathea.{Current, History, JsonDoc, SchemaConfig}
 import com.github.tminglei.slickpg.PgJson4sSupport
 import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.json4s.JsonAST.JValue
@@ -22,13 +22,13 @@ import scala.slick.jdbc.{GetResult, SetParameter, StaticQueryInvoker, StaticQuer
 
 trait DocumentDao {
   def getHistoryDocumentById(id: UUID, schema: Option[String] = None): Future[Option[History]]
-  def getLatestDocumentById(id: UUID, schema: Option[String] = None): Future[Option[Latest]]
+  def getCurrentDocumentById(id: UUID, schema: Option[String] = None): Future[Option[Current]]
   def countHistoryDocuments(): Future[Int]
-  def countLatestDocuments(): Future[Int]
+  def countCurrentDocuments(): Future[Int]
   def getHistoryDocuments(count: Int, offset: Int): Future[List[History]]
-  def getLatestDocuments(count: Int, offset: Int): Future[List[Latest]]
+  def getCurrentDocuments(count: Int, offset: Int): Future[List[Current]]
   def storeHistoryDocument(document: JValue, deleteOld: Boolean = true): Future[(UUID, List[UUID])]
-  def storeLatestDocument(document: JValue, deleteOld: Boolean = true): Future[(UUID, List[UUID])]
+  def storeCurrentDocument(document: JValue, deleteOld: Boolean = true): Future[(UUID, List[UUID])]
   def getDocumentHistory(document: JValue): Future[List[JValue]]
 }
 
@@ -55,18 +55,18 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     def * = (id, schema, classification, doc, source) <> (History.tupled, History.unapply)
   }
 
-  class LatestTable(tag: Tag) extends Table[Latest](tag, "latest_documents") {
+  class CurrentTable(tag: Tag) extends Table[Current](tag, "current_documents") {
     def id = column[UUID]("id", O.PrimaryKey)
     def schema = column[String]("schema")
     def classification = column[JValue]("classification")
     def doc = column[JValue]("doc")
     def source = column[JValue]("source")
-    def * = (id, schema, classification, doc, source) <> (Latest.tupled, Latest.unapply)
+    def * = (id, schema, classification, doc, source) <> (Current.tupled, Current.unapply)
   }
 
   private val db = Database.forURL(config.jdbcUrl, user = config.user, password = config.pass)
   private val HistoryRepo = TableQuery[HistoryTable]
-  private val LatestRepo = TableQuery[LatestTable]
+  private val CurrentRepo = TableQuery[CurrentTable]
 
   private implicit val GetUUID = GetResult[UUID](r => UUID.fromString(r.nextString()))
   private implicit val GetHistoryResult = GetResult[History](r => History(
@@ -76,14 +76,14 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private val deleteHistoryDocuments = Q.query[JValue, UUID](
     "DELETE FROM history_documents WHERE source @> ?::jsonb RETURNING id")
 
-  private val deleteLatestDocuments = Q.query[(JValue, JValue), UUID](
-    "DELETE FROM latest_documents WHERE source @> ?::jsonb OR classification = ?::jsonb RETURNING id")
+  private val deleteCurrentDocuments = Q.query[(JValue, JValue), UUID](
+    "DELETE FROM current_documents WHERE source @> ?::jsonb OR classification = ?::jsonb RETURNING id")
 
   private val insertHistoryDocument = Q.query[(String, JValue, JValue, JValue), UUID](
     "INSERT INTO history_documents (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
-  private val insertLatestDocument = Q.query[(String, JValue, JValue, JValue), UUID](
-    "INSERT INTO latest_documents (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
+  private val insertCurrentDocument = Q.query[(String, JValue, JValue, JValue), UUID](
+    "INSERT INTO current_documents (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
   private val selectDocumentHistory = Q.query[(String, JValue), History](
     "SELECT id, schema, classification, doc, source FROM history_documents WHERE schema = ? AND classification = ?::jsonb")
@@ -92,24 +92,24 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     db.withSession { implicit s => getDocumentOfSchema(schema, HistoryRepo.withFilter(_.id === id).firstOption) }
   }
 
-  override def getLatestDocumentById(id: UUID, schema: Option[String]): Future[Option[Latest]] = Future {
-    db.withSession { implicit s => getDocumentOfSchema(schema, LatestRepo.withFilter(_.id === id).firstOption) }
+  override def getCurrentDocumentById(id: UUID, schema: Option[String]): Future[Option[Current]] = Future {
+    db.withSession { implicit s => getDocumentOfSchema(schema, CurrentRepo.withFilter(_.id === id).firstOption) }
   }
 
   override def countHistoryDocuments(): Future[Int] = Future {
     db.withSession { implicit s => HistoryRepo.size.run }
   }
 
-  override def countLatestDocuments(): Future[Int] = Future {
-    db.withSession { implicit s => LatestRepo.size.run }
+  override def countCurrentDocuments(): Future[Int] = Future {
+    db.withSession { implicit s => CurrentRepo.size.run }
   }
 
   override def getHistoryDocuments(count: Int, offset: Int): Future[List[History]] = Future {
     db.withSession { implicit s => HistoryRepo.drop(offset).take(count).list }
   }
 
-  override def getLatestDocuments(count: Int, offset: Int): Future[List[Latest]] = Future {
-    db.withSession { implicit s => LatestRepo.drop(offset).take(count).list }
+  override def getCurrentDocuments(count: Int, offset: Int): Future[List[Current]] = Future {
+    db.withSession { implicit s => CurrentRepo.drop(offset).take(count).list }
   }
 
   override def storeHistoryDocument(document: JValue, deleteOld: Boolean): Future[(UUID, List[UUID])] =
@@ -117,9 +117,9 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       deleteHistoryDocuments(keySource)
     }
 
-  override def storeLatestDocument(document: JValue, deleteOld: Boolean): Future[(UUID, List[UUID])] =
-    storeDocument(document, deleteOld, insertLatestDocument) { case (keySource, classification) =>
-      deleteLatestDocuments(keySource, classification)
+  override def storeCurrentDocument(document: JValue, deleteOld: Boolean): Future[(UUID, List[UUID])] =
+    storeDocument(document, deleteOld, insertCurrentDocument) { case (keySource, classification) =>
+      deleteCurrentDocuments(keySource, classification)
     }
 
   override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {

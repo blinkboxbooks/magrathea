@@ -22,15 +22,15 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 trait IndexService {
-  def searchInLatest(query: String, page: Page): Future[ListPage[JValue]]
+  def searchInCurrent(query: String, page: Page): Future[ListPage[JValue]]
   def searchInHistory(query: String, page: Page): Future[ListPage[JValue]]
-  def indexLatestDocument(docId: UUID, doc: JValue): Future[IndexResponse]
+  def indexCurrentDocument(docId: UUID, doc: JValue): Future[IndexResponse]
   def indexHistoryDocument(docId: UUID, doc: JValue): Future[IndexResponse]
-  def deleteLatestIndex(docIds: List[UUID]): Future[BulkResponse]
+  def deleteCurrentIndex(docIds: List[UUID]): Future[BulkResponse]
   def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse]
-  def reIndexLatestDocument(docId: UUID, schema: String): Future[Boolean]
+  def reIndexCurrentDocument(docId: UUID, schema: String): Future[Boolean]
   def reIndexHistoryDocument(docId: UUID, schema: String): Future[Boolean]
-  def reIndexLatest(): Future[Unit]
+  def reIndexCurrent(): Future[Unit]
   def reIndexHistory(): Future[Unit]
 }
 
@@ -44,30 +44,30 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   override implicit val json4sJacksonFormats = DefaultFormats
 
-  override def searchInLatest(queryText: String, page: Page): Future[ListPage[JValue]] =
-    searchDocument(queryText, "latest", page)
+  override def searchInCurrent(queryText: String, page: Page): Future[ListPage[JValue]] =
+    searchDocument(queryText, "current", page)
 
   override def searchInHistory(queryText: String, page: Page): Future[ListPage[JValue]] =
     searchDocument(queryText, "history", page)
 
-  override def indexLatestDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
-    indexDocument(docId, doc, "latest")
+  override def indexCurrentDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
+    indexDocument(docId, doc, "current")
 
   override def indexHistoryDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
     indexDocument(docId, doc, "history")
 
   override def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "history")
 
-  override def deleteLatestIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "latest")
+  override def deleteCurrentIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "current")
 
-  override def reIndexLatestDocument(docId: UUID, schema: String): Future[Boolean] =
-    reIndexDocument(docId, "latest", schema)(documentDao.getLatestDocumentById)
+  override def reIndexCurrentDocument(docId: UUID, schema: String): Future[Boolean] =
+    reIndexDocument(docId, "current", schema)(documentDao.getCurrentDocumentById)
 
   override def reIndexHistoryDocument(docId: UUID, schema: String): Future[Boolean] =
     reIndexDocument(docId, "history", schema)(documentDao.getHistoryDocumentById)
 
-  override def reIndexLatest(): Future[Unit] =
-    reIndexTable("latest")(documentDao.countLatestDocuments, documentDao.getLatestDocuments)
+  override def reIndexCurrent(): Future[Unit] =
+    reIndexTable("current")(documentDao.countCurrentDocuments, documentDao.getCurrentDocuments)
 
   override def reIndexHistory(): Future[Unit] =
     reIndexTable("history")(documentDao.countHistoryDocuments, documentDao.getHistoryDocuments)

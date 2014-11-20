@@ -41,8 +41,8 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   "The service" should "return 200 with the requested book, if it exists" in {
     val book = sampleBook()
-    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
-      Future.successful(Some(latest(book))))
+    when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(Some(current(book))))
     Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(book))
@@ -56,7 +56,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the book does not exist" in {
-    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+    when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(None))
     Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual NotFound
@@ -64,7 +64,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 200 and re-index a book, if it exists" in {
-    when(indexService.reIndexLatestDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
+    when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
     Put(s"/books/${UUID.randomUUID()}/reindex") ~> routes ~> check {
       status shouldEqual OK
     }
@@ -77,7 +77,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the requested book to re-index does not exist" in {
-    when(indexService.reIndexLatestDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
+    when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
     Put(s"/books/${UUID.randomUUID()}/reindex") ~> routes ~> check {
       status shouldEqual NotFound
     }
@@ -85,8 +85,8 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   it should "return 200 with the requested contributor, if it exists" in {
     val contributor = sampleContributor()
-    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
-      Future.successful(Some(latest(contributor))))
+    when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
+      Future.successful(Some(current(contributor))))
     Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(contributor))
@@ -100,7 +100,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the contributor does not exist" in {
-    when(documentDao.getLatestDocumentById(any[UUID], any[Option[String]])).thenReturn(
+    when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(None))
     Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
       status shouldEqual NotFound
@@ -108,7 +108,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 200 and re-index a contributor, if it exists" in {
-    when(indexService.reIndexLatestDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
+    when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
     Put(s"/contributors/${UUID.randomUUID()}/reindex") ~> routes ~> check {
       status shouldEqual OK
     }
@@ -121,7 +121,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   }
 
   it should "return 404 if the requested contributor to re-index does not exist" in {
-    when(indexService.reIndexLatestDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
+    when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
     Put(s"/contributors/${UUID.randomUUID()}/reindex") ~> routes ~> check {
       status shouldEqual NotFound
     }
