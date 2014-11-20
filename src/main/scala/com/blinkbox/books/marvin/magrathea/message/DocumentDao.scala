@@ -46,7 +46,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   override implicit val json4sJacksonFormats = DefaultFormats
 
-  class HistoryTable(tag: Tag) extends Table[History](tag, "history") {
+  class HistoryTable(tag: Tag) extends Table[History](tag, "history_documents") {
     def id = column[UUID]("id", O.PrimaryKey)
     def schema = column[String]("schema")
     def classification = column[JValue]("classification")
@@ -55,7 +55,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
     def * = (id, schema, classification, doc, source) <> (History.tupled, History.unapply)
   }
 
-  class LatestTable(tag: Tag) extends Table[Latest](tag, "latest") {
+  class LatestTable(tag: Tag) extends Table[Latest](tag, "latest_documents") {
     def id = column[UUID]("id", O.PrimaryKey)
     def schema = column[String]("schema")
     def classification = column[JValue]("classification")
@@ -74,19 +74,19 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private implicit val SetJValueParameter = SetParameter[JValue]((v, pp) => pp.setString(compact(render(v))))
 
   private val deleteHistoryDocuments = Q.query[JValue, UUID](
-    "DELETE FROM history WHERE source @> ?::jsonb RETURNING id")
+    "DELETE FROM history_documents WHERE source @> ?::jsonb RETURNING id")
 
   private val deleteLatestDocuments = Q.query[(JValue, JValue), UUID](
-    "DELETE FROM latest WHERE source @> ?::jsonb OR classification = ?::jsonb RETURNING id")
+    "DELETE FROM latest_documents WHERE source @> ?::jsonb OR classification = ?::jsonb RETURNING id")
 
   private val insertHistoryDocument = Q.query[(String, JValue, JValue, JValue), UUID](
-    "INSERT INTO history (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
+    "INSERT INTO history_documents (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
   private val insertLatestDocument = Q.query[(String, JValue, JValue, JValue), UUID](
-    "INSERT INTO latest (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
+    "INSERT INTO latest_documents (schema, classification, doc, source) VALUES(?, ?::jsonb, ?::jsonb, ?::jsonb) RETURNING id")
 
   private val selectDocumentHistory = Q.query[(String, JValue), History](
-    "SELECT id, schema, classification, doc, source FROM history WHERE schema = ? AND classification = ?::jsonb")
+    "SELECT id, schema, classification, doc, source FROM history_documents WHERE schema = ? AND classification = ?::jsonb")
 
   override def getHistoryDocumentById(id: UUID, schema: Option[String]): Future[Option[History]] = Future {
     db.withSession { implicit s => getDocumentOfSchema(schema, HistoryRepo.withFilter(_.id === id).firstOption) }
