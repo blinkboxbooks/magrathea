@@ -1,5 +1,13 @@
 # Change log
 
+## 0.2.1 ([#7](https://git.mobcastdev.com/Marvin/magrathea/pull/7) 2014-11-21 10:35:08)
+
+Database migration scripts
+
+### Improvements
+
+* Added database migration scripts for PostgreSQL
+
 ## 0.2.0 ([#6](https://git.mobcastdev.com/Marvin/magrathea/pull/6) 2014-11-18 17:34:23)
 
 Postgres
