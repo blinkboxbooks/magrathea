@@ -6,7 +6,7 @@ import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
-import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.slf4j.StrictLogging
@@ -76,7 +76,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   private def handleDocument(document: JValue, deleteOld: Boolean = true): Future[Unit] = for {
     (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
     history <- documentDao.getDocumentHistory(document)
-    mergedDoc = mergeDocuments(history)
+    mergedDoc = mergeHistoryDocuments(history)
     (insertId, deletedIds) <- documentDao.storeCurrentDocument(mergedDoc, deleteOld)
     _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
@@ -102,9 +102,9 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     schemaField merge document merge sourceField
   }
 
-  private def mergeDocuments(documents: List[JValue]): JValue = {
-    logger.debug("Starting document merging...")
-    val merged = documents match {
+  private def mergeHistoryDocuments(documents: List[History]): JValue = {
+    logger.debug("Starting history document merging...")
+    val merged = documents.map(_.toJson) match {
       case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
       case x :: Nil => DocumentAnnotator.annotate(x)
       case x => x.par.reduce(documentMerge)

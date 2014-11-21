@@ -29,7 +29,8 @@ trait DocumentDao {
   def getCurrentDocuments(count: Int, offset: Int): Future[List[Current]]
   def storeHistoryDocument(document: JValue, deleteOld: Boolean = true): Future[(UUID, List[UUID])]
   def storeCurrentDocument(document: JValue, deleteOld: Boolean = true): Future[(UUID, List[UUID])]
-  def getDocumentHistory(document: JValue): Future[List[JValue]]
+  def getDocumentHistory(document: JValue): Future[List[History]]
+  def getDocumentHistory(id: UUID, schema: String): Future[List[History]]
 }
 
 object MyPostgresDriver extends PostgresDriver with PgJson4sSupport {
@@ -72,6 +73,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   private implicit val GetHistoryResult = GetResult[History](r => History(
     UUID.fromString(r.nextString()), r.nextString(), parse(r.nextString()), parse(r.nextString()), parse(r.nextString())))
   private implicit val SetJValueParameter = SetParameter[JValue]((v, pp) => pp.setString(compact(render(v))))
+  private implicit val SetUUIDParameter = SetParameter[UUID]((v, pp) => pp.setString(v.toString))
 
   private val deleteHistoryDocuments = Q.query[JValue, UUID](
     "DELETE FROM history_documents WHERE source @> ?::jsonb RETURNING id")
@@ -87,6 +89,17 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
 
   private val selectDocumentHistory = Q.query[(String, JValue), History](
     "SELECT id, schema, classification, doc, source FROM history_documents WHERE schema = ? AND classification = ?::jsonb")
+
+  private val selectDocumentHistoryById = Q.query[(UUID, String), History](
+    """
+      |SELECT history_documents.id, history_documents.schema, history_documents.classification, history_documents.doc, history_documents.source
+      |FROM current_documents
+      |INNER JOIN history_documents ON
+      |  current_documents.schema = history_documents.schema AND
+      |  current_documents.classification = history_documents.classification
+      |WHERE current_documents.id = ?::uuid AND current_documents.schema = ?
+      |ORDER BY history_documents.source->'deliveredAt' DESC
+    """.stripMargin)
 
   override def getHistoryDocumentById(id: UUID, schema: Option[String]): Future[Option[History]] = Future {
     db.withSession { implicit s => getDocumentOfSchema(schema, HistoryRepo.withFilter(_.id === id).firstOption) }
@@ -122,12 +135,16 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       deleteCurrentDocuments(keySource, classification)
     }
 
-  override def getDocumentHistory(document: JValue): Future[List[JValue]] = Future {
+  override def getDocumentHistory(document: JValue): Future[List[History]] = Future {
     db.withSession { implicit s =>
       extractFieldsFrom(document) match { case (schema, classification, _, _) =>
-        selectDocumentHistory(schema, classification).list.map(_.toJson)
+        selectDocumentHistory(schema, classification).list
       }
     }
+  }
+
+  override def getDocumentHistory(id: UUID, schema: String): Future[List[History]] = Future {
+    db.withSession { implicit s => selectDocumentHistoryById(id, schema).list }
   }
 
   private def getDocumentOfSchema[T <: JsonDoc](schema: Option[String], doc: Option[T]): Option[T] =

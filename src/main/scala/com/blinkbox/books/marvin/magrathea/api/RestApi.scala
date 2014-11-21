@@ -20,8 +20,10 @@ import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
   def getCurrentBookById: Route
+  def getCurrentBookHistory: Route
   def reIndexBook: Route
   def getCurrentContributorById: Route
+  def getCurrentContributorHistory: Route
   def reIndexContributor: Route
   def search: Route
   def reIndexCurrentSearch: Route
@@ -49,6 +51,14 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
     }
   }
 
+  override val getCurrentBookHistory = get {
+    path("books" / Segment / "history") { id =>
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.book))(uncacheable(_))
+      }
+    }
+  }
+
   override val reIndexBook = put {
     path("books" / Segment / "reindex") { id =>
       withUUID(id) { uuid =>
@@ -65,6 +75,14 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
         onSuccess(documentDao.getCurrentDocumentById(uuid, Option(schemas.contributor))) {
           _.fold(contributorError)(docResponse)
         }
+      }
+    }
+  }
+
+  override val getCurrentContributorHistory = get {
+    path("contributors" / Segment / "history") { id =>
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.contributor))(uncacheable(_))
       }
     }
   }
@@ -119,8 +137,8 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          getCurrentBookById ~ getCurrentContributorById ~ search ~
-          reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
+          getCurrentBookById ~ getCurrentBookHistory ~ getCurrentContributorById ~ getCurrentContributorHistory ~
+          search ~ reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
         }
       }
     }
