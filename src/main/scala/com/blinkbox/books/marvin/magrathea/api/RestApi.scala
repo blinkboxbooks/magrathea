@@ -19,12 +19,12 @@ import scala.util.Try
 import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
-  def getLatestBookById: Route
+  def getCurrentBookById: Route
   def reIndexBook: Route
-  def getLatestContributorById: Route
+  def getCurrentContributorById: Route
   def reIndexContributor: Route
   def search: Route
-  def reIndexLatestSearch: Route
+  def reIndexCurrentSearch: Route
   def reIndexHistorySearch: Route
 }
 
@@ -39,10 +39,10 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   private val contributorError = uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
   private val uuidError = uncacheable(BadRequest, Error("InvalidUUID", "The requested id is not a valid UUID."))
 
-  override val getLatestBookById = get {
+  override val getCurrentBookById = get {
     path("books" / Segment) { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentDao.getLatestDocumentById(uuid, Option(schemas.book))) {
+        onSuccess(documentDao.getCurrentDocumentById(uuid, Option(schemas.book))) {
           _.fold(bookError)(docResponse)
         }
       }
@@ -52,17 +52,17 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val reIndexBook = put {
     path("books" / Segment / "reindex") { id =>
       withUUID(id) { uuid =>
-        onSuccess(indexService.reIndexLatestDocument(uuid, schemas.book)) { found =>
+        onSuccess(indexService.reIndexCurrentDocument(uuid, schemas.book)) { found =>
           if (found) uncacheable(OK, None) else bookError
         }
       }
     }
   }
 
-  override val getLatestContributorById = get {
+  override val getCurrentContributorById = get {
     path("contributors" / Segment) { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentDao.getLatestDocumentById(uuid, Option(schemas.contributor))) {
+        onSuccess(documentDao.getCurrentDocumentById(uuid, Option(schemas.contributor))) {
           _.fold(contributorError)(docResponse)
         }
       }
@@ -72,7 +72,7 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val reIndexContributor = put {
     path("contributors" / Segment / "reindex") { id =>
       withUUID(id) { uuid =>
-        onSuccess(indexService.reIndexLatestDocument(uuid, schemas.contributor)) { found =>
+        onSuccess(indexService.reIndexCurrentDocument(uuid, schemas.contributor)) { found =>
           if (found) uncacheable(OK, None) else contributorError
         }
       }
@@ -83,19 +83,19 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
     path("search") {
       parameter('q) { q =>
         paged(defaultCount = 50) { paged =>
-          onSuccess(indexService.searchInLatest(q, paged))(uncacheable(_))
+          onSuccess(indexService.searchInCurrent(q, paged))(uncacheable(_))
         }
       }
     }
   }
 
-  override val reIndexLatestSearch = put {
-    path("search" / "reindex" / "latest") {
+  override val reIndexCurrentSearch = put {
+    path("search" / "reindex" / "current") {
       dynamic {
-        log.info("Starting re-indexing of 'latest'...")
-        indexService.reIndexLatest().onComplete {
-          case scala.util.Success(_) => log.info("Re-indexing of 'latest' finished successfully.")
-          case scala.util.Failure(e) => log.error("Re-indexing of 'latest' failed.", e)
+        log.info("Starting re-indexing of 'current'...")
+        indexService.reIndexCurrent().onComplete {
+          case scala.util.Success(_) => log.info("Re-indexing of 'current' finished successfully.")
+          case scala.util.Failure(e) => log.error("Re-indexing of 'current' failed.", e)
         }
         uncacheable(Accepted, None)
       }
@@ -119,8 +119,8 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
     monitor() {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          getLatestBookById ~ getLatestContributorById ~ search ~
-          reIndexBook ~ reIndexContributor ~ reIndexLatestSearch ~ reIndexHistorySearch
+          getCurrentBookById ~ getCurrentContributorById ~ search ~
+          reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
         }
       }
     }

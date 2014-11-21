@@ -20,7 +20,7 @@ case class History(id: UUID, schema: String, classification: JValue, doc: JValue
   }
 }
 
-case class Latest(id: UUID, schema: String, classification: JValue, doc: JValue, source: JValue) extends JsonDoc {
+case class Current(id: UUID, schema: String, classification: JValue, doc: JValue, source: JValue) extends JsonDoc {
   lazy val toJson: JValue = {
     val schemaField: JValue = "$schema" -> schema
     val classificationField: JValue = "classification" -> classification

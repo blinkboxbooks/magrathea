@@ -117,25 +117,25 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     cArray(1) \ "ids" shouldEqual ids1
   }
 
-  it should "index every latest document that it stores" in new TestFixture {
+  it should "index every current document that it stores" in new TestFixture {
     val inserted = UUID.randomUUID()
     val deleted = List.empty
     val captor = ArgumentCaptor.forClass(classOf[JValue])
-    doReturn(Future.successful((inserted, deleted))).when(documentDao).storeLatestDocument(captor.capture(), any[Boolean])
+    doReturn(Future.successful((inserted, deleted))).when(documentDao).storeCurrentDocument(captor.capture(), any[Boolean])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
-    verify(indexService, times(1)).indexLatestDocument(inserted, captor.getValue)
+    verify(indexService, times(1)).indexCurrentDocument(inserted, captor.getValue)
   }
 
-  it should "delete latest index from the deleted latest documents" in new TestFixture {
+  it should "delete current index from the deleted current documents" in new TestFixture {
     val inserted = UUID.randomUUID()
     val deleted = List(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID())
-    doReturn(Future.successful((inserted, deleted))).when(documentDao).storeLatestDocument(any[JValue], any[Boolean])
+    doReturn(Future.successful((inserted, deleted))).when(documentDao).storeCurrentDocument(any[JValue], any[Boolean])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
-    verify(indexService, times(1)).deleteLatestIndex(deleted)
+    verify(indexService, times(1)).deleteCurrentIndex(deleted)
   }
 
   it should "merge even if the history has only one document" in new TestFixture {
@@ -182,8 +182,8 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     historyCaptor.getAllValues.get(0) \ "source" shouldEqual contributors \ "source"
     historyCaptor.getAllValues.get(1) \ "$schema" shouldEqual JString("ingestion.contributor.metadata.v2")
     historyCaptor.getAllValues.get(1) \ "source" shouldEqual contributors \ "source"
-    verify(documentDao, times(1)).storeLatestDocument(any[JValue], eql(true))
-    verify(documentDao, times(2)).storeLatestDocument(any[JValue], eql(false))
+    verify(documentDao, times(1)).storeCurrentDocument(any[JValue], eql(true))
+    verify(documentDao, times(2)).storeCurrentDocument(any[JValue], eql(false))
   }
 
   trait TestFixture extends TestHelper {
@@ -195,7 +195,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     private val deletedDocuments = List.empty
     doReturn(Future.successful(UUID.randomUUID(), deletedDocuments)).when(documentDao).storeHistoryDocument(any[JValue], any[Boolean])
-    doReturn(Future.successful(UUID.randomUUID(), deletedDocuments)).when(documentDao).storeLatestDocument(any[JValue], any[Boolean])
+    doReturn(Future.successful(UUID.randomUUID(), deletedDocuments)).when(documentDao).storeCurrentDocument(any[JValue], any[Boolean])
 
     private val documentHistory = List(sampleBook(), sampleBook(), sampleBook())
     doReturn(Future.successful(documentHistory)).when(documentDao).getDocumentHistory(any[JValue])
@@ -205,8 +205,8 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     val indexService = mock[IndexService]
     val bulkResponse = mock[BulkResponse]
-    doReturn(Future.successful(bulkResponse)).when(indexService).deleteLatestIndex(any[List[UUID]])
-    doReturn(Future.successful(new IndexResponse())).when(indexService).indexLatestDocument(any[UUID], any[JValue])
+    doReturn(Future.successful(bulkResponse)).when(indexService).deleteCurrentIndex(any[List[UUID]])
+    doReturn(Future.successful(new IndexResponse())).when(indexService).indexCurrentDocument(any[UUID], any[JValue])
 
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])
@@ -225,7 +225,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
       // Check that everything was called at least once.
       verify(documentDao, atLeastOnce()).storeHistoryDocument(any[JValue], any[Boolean])
       verify(documentDao, atLeastOnce()).getDocumentHistory(any[JValue])
-      verify(documentDao, atLeastOnce()).storeLatestDocument(any[JValue], any[Boolean])
+      verify(documentDao, atLeastOnce()).storeCurrentDocument(any[JValue], any[Boolean])
       // Check no errors were sent.
       verify(errorHandler, times(0)).handleError(any[Event], any[Throwable])
     }

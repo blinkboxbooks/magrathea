@@ -4,7 +4,7 @@ import java.util.UUID
 
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.Helpers._
-import com.blinkbox.books.marvin.magrathea.{History, Latest}
+import com.blinkbox.books.marvin.magrathea.{History, Current}
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST.{JNothing, JString, JValue}
@@ -63,9 +63,9 @@ trait TestHelper extends Json4sJacksonSupport with JsonMethods {
   def annotatedSampleBook(extraContent: JValue = JNothing): JValue =
     DocumentAnnotator.annotate(sampleBook(extraContent))
 
-  def latest(document: JValue): Latest =
+  def current(document: JValue): Current =
     extractFieldsFrom(document) match { case (schema, classification, doc, source) =>
-      Latest(UUID.randomUUID(), schema, classification, doc, source)
+      Current(UUID.randomUUID(), schema, classification, doc, source)
     }
 
   def history(document: JValue): History =

@@ -77,7 +77,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
     history <- documentDao.getDocumentHistory(document)
     mergedDoc = mergeDocuments(history)
-    (insertId, deletedIds) <- documentDao.storeLatestDocument(mergedDoc, deleteOld)
+    (insertId, deletedIds) <- documentDao.storeCurrentDocument(mergedDoc, deleteOld)
     _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
 
@@ -92,8 +92,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   }
 
   private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
-    val indexed = indexService.indexLatestDocument(insertId, document).map(_ => ())
-    if (deletedIds.nonEmpty) (indexService.deleteLatestIndex(deletedIds) zip indexed).map(_ => ()) else indexed
+    val indexed = indexService.indexCurrentDocument(insertId, document).map(_ => ())
+    if (deletedIds.nonEmpty) (indexService.deleteCurrentIndex(deletedIds) zip indexed).map(_ => ()) else indexed
   }
 
   private def contribufy(document: JValue, source: JValue): JValue = {
