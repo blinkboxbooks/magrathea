@@ -98,7 +98,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
       |  current_documents.schema = history_documents.schema AND
       |  current_documents.classification = history_documents.classification
       |WHERE current_documents.id = ?::uuid AND current_documents.schema = ?
-      |ORDER BY history_documents.source->'deliveredAt' DESC
+      |ORDER BY history_documents.source->'deliveredAt' ASC
     """.stripMargin)
 
   override def getHistoryDocumentById(id: UUID, schema: Option[String]): Future[Option[History]] = Future {
