@@ -8,7 +8,7 @@ import com.blinkbox.books.marvin.magrathea.api.{DefaultIndexService, WebService}
 import com.blinkbox.books.marvin.magrathea.message.{MessageListener, PostgresDocumentDao}
 import com.blinkbox.books.spray._
 import com.sksamuel.elastic4s.ElasticClient
-import com.typesafe.scalalogging.slf4j.StrictLogging
+import com.typesafe.scalalogging.StrictLogging
 import org.elasticsearch.common.settings.ImmutableSettings
 import spray.can.Http
 

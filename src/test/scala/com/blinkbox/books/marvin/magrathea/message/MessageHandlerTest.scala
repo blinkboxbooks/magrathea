@@ -231,7 +231,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     }
 
     /** Check that event processing failed and was treated correctly. */
-    def checkFailure[T <: Throwable](event: Event)(implicit manifest: Manifest[T]) {
+    def checkFailure[T <: Throwable](event: Event)(implicit manifest: Manifest[T]): Unit = {
       // Check event was passed on to error handler, along with the expected exception.
       val expectedExceptionClass = manifest.runtimeClass.asInstanceOf[Class[T]]
       verify(errorHandler).handleError(eql(event), isA(expectedExceptionClass))

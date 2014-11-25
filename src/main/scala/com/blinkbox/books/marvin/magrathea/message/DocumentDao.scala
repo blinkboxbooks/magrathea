@@ -10,7 +10,7 @@ import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.Helpers._
 import com.blinkbox.books.marvin.magrathea.{Current, History, JsonDoc, SchemaConfig}
 import com.github.tminglei.slickpg.PgJson4sSupport
-import com.typesafe.scalalogging.slf4j.StrictLogging
+import com.typesafe.scalalogging.StrictLogging
 import org.json4s.JsonAST.JValue
 import org.json4s.jackson.JsonMethods
 import spray.httpx.Json4sJacksonSupport

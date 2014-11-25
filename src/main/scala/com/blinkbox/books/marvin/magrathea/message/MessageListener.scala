@@ -24,7 +24,7 @@ class MessageListener(config: AppConfig, indexService: IndexService, documentDao
     (DocumentMerger.merge)), name = "message-handler")
   val messageConsumer = consumer("message-consumer", config.listener.input, messageHandler)
 
-  def start() {
+  def start(): Unit = {
     messageConsumer ! RabbitMqConsumer.Init
   }
 

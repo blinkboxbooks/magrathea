@@ -9,7 +9,7 @@ import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
-import com.typesafe.scalalogging.slf4j.StrictLogging
+import com.typesafe.scalalogging.StrictLogging
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
