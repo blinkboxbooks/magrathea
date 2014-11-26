@@ -12,8 +12,6 @@ import com.typesafe.scalalogging.StrictLogging
 import org.elasticsearch.common.settings.ImmutableSettings
 import spray.can.Http
 
-import scala.util.control.ControlThrowable
-
 object WebApp extends App with Configuration with Loggers with StrictLogging {
   try {
     val appConfig = AppConfig(config)
@@ -40,7 +38,6 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     val messageListener = new MessageListener(appConfig, msgIndexService, msgDocumentDao)(msgSystem, msgExCtx, msgTimeout)
     messageListener.start()
   } catch {
-    case ex: ControlThrowable => throw ex
     case ex: Throwable =>
       logger.error("Error during initialisation of the service", ex)
       System.exit(1)
