@@ -23,7 +23,7 @@ import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
   indexService: IndexService, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
+  (documentMerge: => (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)

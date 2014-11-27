@@ -4,16 +4,14 @@ import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator._
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpecLike, Matchers}
-import spray.httpx.Json4sJacksonSupport
 
 import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
-class DocumentAnnotatorTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers with TestHelper {
+class DocumentAnnotatorTest extends FlatSpecLike with Matchers with TestHelper {
   "The document annotator" should "refuse to annotate a document without source" in {
     val doc = sampleBook().removeDirectField("source")
     intercept[MissingSourceException] {

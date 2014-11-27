@@ -56,7 +56,9 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val getCurrentBookHistory = get {
     path("books" / Segment / "history") { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentHistory(uuid, schemas.book))(uncacheable(_))
+        onSuccess(documentHistory(uuid, schemas.book)) { history =>
+          if (history.size > 0) uncacheable(history) else bookError
+        }
       }
     }
   }
@@ -84,7 +86,9 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val getCurrentContributorHistory = get {
     path("contributors" / Segment / "history") { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentDao.getDocumentHistory(uuid, schemas.contributor))(uncacheable(_))
+        onSuccess(documentHistory(uuid, schemas.contributor)) { history =>
+          if (history.size > 0) uncacheable(history) else contributorError
+        }
       }
     }
   }

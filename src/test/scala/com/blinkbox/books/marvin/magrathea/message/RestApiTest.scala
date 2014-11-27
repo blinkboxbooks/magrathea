@@ -4,11 +4,12 @@ import java.net.URL
 import java.util.UUID
 
 import com.blinkbox.books.config.ApiConfig
-import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
-import com.blinkbox.books.spray.v2
+import com.blinkbox.books.marvin.magrathea.message.DocumentRevisions.Revision
+import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.test.MockitoSyrup
-import org.json4s.jackson.JsonMethods
+import org.json4s.JsonAST.{JValue, JNothing}
+import org.json4s.JsonDSL._
 import org.junit.runner.RunWith
 import org.mockito.Matchers._
 import org.mockito.Mockito._
@@ -22,8 +23,8 @@ import scala.concurrent.Future
 import scala.concurrent.duration._
 
 @RunWith(classOf[JUnitRunner])
-class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService with MockitoSyrup with v2.JsonSupport
-  with JsonMethods with Matchers with TestHelper {
+class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
+  with MockitoSyrup with Matchers with TestHelper {
   implicit val actorRefFactory = system
   implicit val routeTestTimeout = RouteTestTimeout(5.seconds)
 
@@ -43,7 +44,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
     val book = sampleBook()
     when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(Some(current(book))))
-    Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
+    Get(s"/books/$generateId") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(book))
     }
@@ -58,14 +59,90 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   it should "return 404 if the book does not exist" in {
     when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(None))
-    Get(s"/books/${UUID.randomUUID()}") ~> routes ~> check {
+    Get(s"/books/$generateId") ~> routes ~> check {
+      status shouldEqual NotFound
+    }
+  }
+
+  it should "return 200 and list the book's revision list" in {
+    when(documentDao.getDocumentHistory(any[UUID], any[String])).thenReturn(Future.successful(List(
+      history(sampleBook("fieldA" -> "valueA")),
+      history(sampleBook("fieldB" -> "valueB")),
+      history(sampleBook("fieldA" -> "test"))
+    )))
+    val changed0: JValue = "fieldA" -> "test"
+    val added1: JValue = "fieldB" -> "valueB"
+    val added2: JValue = "fieldA" -> "valueA"
+    Get(s"/books/$generateId/history") ~> routes ~> check {
+      status shouldEqual OK
+      val resp = responseAs[List[Revision]]
+      resp.size shouldEqual 3
+      resp(0).added shouldEqual JNothing
+      resp(0).changed shouldEqual changed0
+      resp(0).deleted shouldEqual JNothing
+      resp(1).added shouldEqual added1
+      resp(1).changed shouldEqual JNothing
+      resp(1).deleted shouldEqual JNothing
+      resp(2).added shouldEqual added2
+      resp(2).changed shouldEqual JNothing
+      resp(2).deleted shouldEqual JNothing
+    }
+  }
+
+  it should "return 400 getting the history of a book with an invalid id" in {
+    Get("/books/xxx/history") ~> routes ~> check {
+      status shouldEqual BadRequest
+    }
+  }
+
+  it should "return 404 getting the history of a book that does not exist" in {
+    when(documentDao.getDocumentHistory(any[UUID], any[String])).thenReturn(Future.successful(List.empty[History]))
+    Get(s"/books/$generateId/history") ~> routes ~> check {
+      status shouldEqual NotFound
+    }
+  }
+
+  it should "return 200 and list the contributor's revision list" in {
+    when(documentDao.getDocumentHistory(any[UUID], any[String])).thenReturn(Future.successful(List(
+      history(sampleContributor("fieldA" -> "valueA")),
+      history(sampleContributor("fieldB" -> "valueB")),
+      history(sampleContributor("fieldA" -> "test"))
+    )))
+    val changed0: JValue = "fieldA" -> "test"
+    val added1: JValue = "fieldB" -> "valueB"
+    val added2: JValue = "fieldA" -> "valueA"
+    Get(s"/contributors/$generateId/history") ~> routes ~> check {
+      status shouldEqual OK
+      val resp = responseAs[List[Revision]]
+      resp.size shouldEqual 3
+      resp(0).added shouldEqual JNothing
+      resp(0).changed shouldEqual changed0
+      resp(0).deleted shouldEqual JNothing
+      resp(1).added shouldEqual added1
+      resp(1).changed shouldEqual JNothing
+      resp(1).deleted shouldEqual JNothing
+      resp(2).added shouldEqual added2
+      resp(2).changed shouldEqual JNothing
+      resp(2).deleted shouldEqual JNothing
+    }
+  }
+
+  it should "return 400 getting the history of a contributor with an invalid id" in {
+    Get("/contributors/xxx/history") ~> routes ~> check {
+      status shouldEqual BadRequest
+    }
+  }
+
+  it should "return 404 getting the history of a contributor that does not exist" in {
+    when(documentDao.getDocumentHistory(any[UUID], any[String])).thenReturn(Future.successful(List.empty[History]))
+    Get(s"/contributors/$generateId/history") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }
 
   it should "return 200 and re-index a book, if it exists" in {
     when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
-    Put(s"/books/${UUID.randomUUID()}/reindex") ~> routes ~> check {
+    Put(s"/books/$generateId/reindex") ~> routes ~> check {
       status shouldEqual OK
     }
   }
@@ -78,7 +155,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   it should "return 404 if the requested book to re-index does not exist" in {
     when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
-    Put(s"/books/${UUID.randomUUID()}/reindex") ~> routes ~> check {
+    Put(s"/books/$generateId/reindex") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }
@@ -87,7 +164,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
     val contributor = sampleContributor()
     when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(Some(current(contributor))))
-    Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
+    Get(s"/contributors/$generateId") ~> routes ~> check {
       status shouldEqual OK
       body.asString shouldEqual compact(render(contributor))
     }
@@ -102,14 +179,14 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
   it should "return 404 if the contributor does not exist" in {
     when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(None))
-    Get(s"/contributors/${UUID.randomUUID()}") ~> routes ~> check {
+    Get(s"/contributors/$generateId") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }
 
   it should "return 200 and re-index a contributor, if it exists" in {
     when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(true))
-    Put(s"/contributors/${UUID.randomUUID()}/reindex") ~> routes ~> check {
+    Put(s"/contributors/$generateId/reindex") ~> routes ~> check {
       status shouldEqual OK
     }
   }
@@ -122,7 +199,7 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService 
 
   it should "return 404 if the requested contributor to re-index does not exist" in {
     when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
-    Put(s"/contributors/${UUID.randomUUID()}/reindex") ~> routes ~> check {
+    Put(s"/contributors/$generateId/reindex") ~> routes ~> check {
       status shouldEqual NotFound
     }
   }

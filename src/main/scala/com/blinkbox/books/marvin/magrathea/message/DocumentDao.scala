@@ -149,8 +149,8 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
 
   private def getDocumentOfSchema[T <: JsonDoc](schema: Option[String], doc: Option[T]): Option[T] =
     (schema, doc) match {
-      case (Some(s), Some(d)) if d.schema == s => Some(d)
-      case (None, Some(d)) => Some(d)
+      case (Some(s), Some(d)) if d.schema == s => Option(d)
+      case (None, Some(d)) => Option(d)
       case _ => None
     }
 

@@ -6,16 +6,14 @@ import com.blinkbox.books.marvin.magrathea.message.DocumentMerger._
 import org.joda.time.DateTime
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
-import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpecLike, Matchers}
-import spray.httpx.Json4sJacksonSupport
 
 import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
-class DocumentMergerTest extends FlatSpecLike with Json4sJacksonSupport with JsonMethods with Matchers with TestHelper {
+class DocumentMergerTest extends FlatSpecLike with Matchers with TestHelper {
   "The document merger" should "refuse to combine two book documents with different schema" in {
     val bookA = sampleBook(
       ("$schema" -> "ingestion.book.metadata.v2") ~
