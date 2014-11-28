@@ -1,5 +1,20 @@
 # Change log
 
+## 0.3.0 ([#8](https://git.mobcastdev.com/Marvin/magrathea/pull/8) 2014-11-28 11:29:30)
+
+Document History
+
+### New features
+
+- Document history implementation for the current documents 
+
+### Improvements
+
+- Bumped some versions
+- Using the new scala-logging
+- Improved and refactored tests
+- Multi-project layout
+
 ## 0.2.1 ([#7](https://git.mobcastdev.com/Marvin/magrathea/pull/7) 2014-11-21 10:35:08)
 
 Database migration scripts
