@@ -11,9 +11,10 @@ import org.json4s.{Diff, JValue}
 
 import scala.language.implicitConversions
 
-object DocumentRevisions {
-  case class Revision(id: UUID, editor: String, changed: JValue, added: JValue, deleted: JValue, timestamp: DateTime)
-  case class PackedRevision(doc: JsonDoc, rev: Revision)
+case class Revision(id: UUID, editor: String, changed: JValue, added: JValue, deleted: JValue, timestamp: DateTime)
+
+object DocumentRevisions extends (List[History] => List[Revision]) {
+  private case class PackedRevision(doc: JsonDoc, rev: Revision)
 
   implicit val json4sJacksonFormats = DefaultFormats
 
@@ -24,7 +25,7 @@ object DocumentRevisions {
    * @param list An incremental list of changes for a specific current document.
    * @return The revision list for the given history documents.
    */
-  def fromList(list: List[History]): List[Revision] =
+  def apply(list: List[History]): List[Revision] =
     list.foldLeft(List.empty[PackedRevision]) {
       case (Nil, doc) => prependOrElse(JsonDoc.None, doc, Nil)
       case (list @ head :: tail, doc) => prependOrElse(head.doc, doc, list)
@@ -62,7 +63,7 @@ object DocumentRevisions {
   private def diff(x: JsonDoc, y: JsonDoc): Option[Revision] = {
     val Diff(changed, added, deleted) = stripIrrelevantData(x) diff stripIrrelevantData(y)
     if (changed != JNothing || added != JNothing || deleted != JNothing)
-      Option(Revision(y.id, extractEditor(y), changed, added, deleted, extractTimestamp(y)))
+      Some(Revision(y.id, extractEditor(y), changed, added, deleted, extractTimestamp(y)))
     else None
   }
 

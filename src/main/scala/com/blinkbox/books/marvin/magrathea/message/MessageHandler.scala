@@ -106,8 +106,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     logger.debug("Starting history document merging...")
     val merged = documents.map(_.toJson) match {
       case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
-      case x :: Nil => DocumentAnnotator.annotate(x)
-      case x => x.par.reduce(documentMerge)
+      case doc :: Nil => DocumentAnnotator.annotate(doc)
+      case docs => docs.reduce(documentMerge)
     }
     logger.info("Merged document")
     merged

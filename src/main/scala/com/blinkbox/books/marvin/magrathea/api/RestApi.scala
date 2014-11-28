@@ -5,7 +5,6 @@ import java.util.UUID
 import akka.actor.ActorRefFactory
 import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.message.DocumentRevisions.Revision
 import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, DocumentRevisions}
 import com.blinkbox.books.marvin.magrathea.{JsonDoc, SchemaConfig}
 import com.blinkbox.books.spray.v1.Error
@@ -17,7 +16,6 @@ import spray.http.StatusCodes._
 import spray.routing._
 import spray.util.LoggingContext
 
-import scala.concurrent.Future
 import scala.util.Try
 import scala.util.control.NonFatal
 
@@ -56,7 +54,7 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val getCurrentBookHistory = get {
     path("books" / Segment / "history") { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentHistory(uuid, schemas.book)) { history =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.book).map(DocumentRevisions)) { history =>
           if (history.size > 0) uncacheable(history) else bookError
         }
       }
@@ -86,7 +84,7 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val getCurrentContributorHistory = get {
     path("contributors" / Segment / "history") { id =>
       withUUID(id) { uuid =>
-        onSuccess(documentHistory(uuid, schemas.contributor)) { history =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.contributor).map(DocumentRevisions)) { history =>
           if (history.size > 0) uncacheable(history) else contributorError
         }
       }
@@ -160,10 +158,4 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
     Try(UUID.fromString(rawId)).toOption.fold[Directive1[UUID]](uuidError)(provide)
 
   private def docResponse = (doc: JsonDoc) => uncacheable(doc.toJson)
-
-  private def documentHistory(id: UUID, schema: String): Future[List[Revision]] = {
-    documentDao.getDocumentHistory(id, schema).map { history =>
-      DocumentRevisions.fromList(history)
-    }
-  }
 }

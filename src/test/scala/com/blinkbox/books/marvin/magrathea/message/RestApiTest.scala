@@ -5,10 +5,9 @@ import java.util.UUID
 
 import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
-import com.blinkbox.books.marvin.magrathea.message.DocumentRevisions.Revision
 import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.test.MockitoSyrup
-import org.json4s.JsonAST.{JValue, JNothing}
+import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.junit.runner.RunWith
 import org.mockito.Matchers._
@@ -77,15 +76,9 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
       status shouldEqual OK
       val resp = responseAs[List[Revision]]
       resp.size shouldEqual 3
-      resp(0).added shouldEqual JNothing
-      resp(0).changed shouldEqual changed0
-      resp(0).deleted shouldEqual JNothing
-      resp(1).added shouldEqual added1
-      resp(1).changed shouldEqual JNothing
-      resp(1).deleted shouldEqual JNothing
-      resp(2).added shouldEqual added2
-      resp(2).changed shouldEqual JNothing
-      resp(2).deleted shouldEqual JNothing
+      List(resp(0).added, resp(0).changed, resp(0).deleted) shouldEqual List(JNothing, changed0, JNothing)
+      List(resp(1).added, resp(1).changed, resp(1).deleted) shouldEqual List(added1, JNothing, JNothing)
+      List(resp(2).added, resp(2).changed, resp(2).deleted) shouldEqual List(added2, JNothing, JNothing)
     }
   }
 
@@ -115,15 +108,9 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
       status shouldEqual OK
       val resp = responseAs[List[Revision]]
       resp.size shouldEqual 3
-      resp(0).added shouldEqual JNothing
-      resp(0).changed shouldEqual changed0
-      resp(0).deleted shouldEqual JNothing
-      resp(1).added shouldEqual added1
-      resp(1).changed shouldEqual JNothing
-      resp(1).deleted shouldEqual JNothing
-      resp(2).added shouldEqual added2
-      resp(2).changed shouldEqual JNothing
-      resp(2).deleted shouldEqual JNothing
+      List(resp(0).added, resp(0).changed, resp(0).deleted) shouldEqual List(JNothing, changed0, JNothing)
+      List(resp(1).added, resp(1).changed, resp(1).deleted) shouldEqual List(added1, JNothing, JNothing)
+      List(resp(2).added, resp(2).changed, resp(2).deleted) shouldEqual List(added2, JNothing, JNothing)
     }
   }
 
