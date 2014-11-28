@@ -1,6 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.json.Json4sExtensions._
+import com.blinkbox.books.marvin.magrathea.TestHelper
 import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator._
 import com.blinkbox.books.marvin.magrathea.message.DocumentMerger._
 import org.joda.time.DateTime

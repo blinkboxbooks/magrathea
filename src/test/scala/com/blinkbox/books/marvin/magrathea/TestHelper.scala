@@ -1,9 +1,9 @@
-package com.blinkbox.books.marvin.magrathea.message
+package com.blinkbox.books.marvin.magrathea
 
 import java.util.UUID
 
 import com.blinkbox.books.marvin.magrathea.Helpers._
-import com.blinkbox.books.marvin.magrathea.{Current, History}
+import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator
 import com.blinkbox.books.spray.v2
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
