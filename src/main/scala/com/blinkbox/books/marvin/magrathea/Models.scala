@@ -2,8 +2,16 @@ package com.blinkbox.books.marvin.magrathea
 
 import java.util.UUID
 
-import org.json4s.JsonAST.JValue
+import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
+
+object JsonDoc {
+  object None extends JsonDoc {
+    override val id = UUID.randomUUID()
+    override val toJson = JNothing
+    override val schema = ""
+  }
+}
 
 trait JsonDoc {
   def id: UUID

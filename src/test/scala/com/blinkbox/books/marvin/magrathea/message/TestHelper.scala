@@ -2,26 +2,25 @@ package com.blinkbox.books.marvin.magrathea.message
 
 import java.util.UUID
 
-import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.marvin.magrathea.Helpers._
-import com.blinkbox.books.marvin.magrathea.{History, Current}
+import com.blinkbox.books.marvin.magrathea.{Current, History}
+import com.blinkbox.books.spray.v2
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST.{JNothing, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
-import spray.httpx.Json4sJacksonSupport
 
 import scala.language.implicitConversions
 import scala.util.Random
 
-trait TestHelper extends Json4sJacksonSupport with JsonMethods {
-  override implicit val json4sJacksonFormats = DefaultFormats
+trait TestHelper extends v2.JsonSupport with JsonMethods {
+  val systemName = "bb-publishing"
 
-  implicit def dateTime2JValue(d: DateTime) = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
+  implicit def dateTime2JValue(d: DateTime): JString = JString(ISODateTimeFormat.dateTime().print(d.withZone(DateTimeZone.UTC)))
 
-  def generateId = BigInt(130, Random).toString(16)
-
+  def generateId = UUID.randomUUID()
+  
   def getRandomIsbn(num: Int = Random.nextInt(1000000)) = s"9780007${"%06d".format(num)}"
 
   def sampleBook(extraContent: JValue = JNothing, includeId: Boolean = true): JValue = {
@@ -36,7 +35,7 @@ trait TestHelper extends Json4sJacksonSupport with JsonMethods {
         ("version" -> "1.0.0")
       ) ~
       ("role" -> "publisher_ftp") ~
-      ("username" -> "jp-publishing") ~
+      ("username" -> systemName) ~
       ("deliveredAt" -> DateTime.now) ~
       ("processedAt" -> DateTime.now)
     ) merge extraContent
@@ -54,7 +53,7 @@ trait TestHelper extends Json4sJacksonSupport with JsonMethods {
         ("version" -> "1.0.0")
       ) ~
       ("role" -> "publisher_ftp") ~
-      ("username" -> "jp-publishing") ~
+      ("username" -> systemName) ~
       ("deliveredAt" -> DateTime.now) ~
       ("processedAt" -> DateTime.now)
     ) merge extraContent

@@ -6,10 +6,10 @@ import akka.actor.ActorRef
 import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
-import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.api.IndexService
+import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
-import com.typesafe.scalalogging.slf4j.StrictLogging
+import com.typesafe.scalalogging.StrictLogging
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -23,7 +23,7 @@ import scala.language.{implicitConversions, postfixOps}
 
 class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributor: DocumentDistributor,
   indexService: IndexService, errorHandler: ErrorHandler, retryInterval: FiniteDuration)
-  (documentMerge: (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
+  (documentMerge: => (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
   implicit val timeout = Timeout(retryInterval)
@@ -76,7 +76,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   private def handleDocument(document: JValue, deleteOld: Boolean = true): Future[Unit] = for {
     (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
     history <- documentDao.getDocumentHistory(document)
-    mergedDoc = mergeDocuments(history)
+    mergedDoc = mergeHistoryDocuments(history)
     (insertId, deletedIds) <- documentDao.storeCurrentDocument(mergedDoc, deleteOld)
     _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
@@ -102,12 +102,12 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     schemaField merge document merge sourceField
   }
 
-  private def mergeDocuments(documents: List[JValue]): JValue = {
-    logger.debug("Starting document merging...")
-    val merged = documents match {
+  private def mergeHistoryDocuments(documents: List[History]): JValue = {
+    logger.debug("Starting history document merging...")
+    val merged = documents.map(_.toJson) match {
       case Nil => throw new IllegalArgumentException("Expected to merge a non-empty history list")
-      case x :: Nil => DocumentAnnotator.annotate(x)
-      case x => x.par.reduce(documentMerge)
+      case doc :: Nil => DocumentAnnotator.annotate(doc)
+      case docs => docs.reduce(documentMerge)
     }
     logger.info("Merged document")
     merged

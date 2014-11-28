@@ -12,7 +12,7 @@ import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.index.IndexResponse
-import org.json4s.JsonAST.{JString, JArray, JNothing, JValue}
+import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
@@ -139,7 +139,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
   }
 
   it should "merge even if the history has only one document" in new TestFixture {
-    doReturn(Future.successful(List(sampleBook()))).when(documentDao).getDocumentHistory(any[JValue])
+    doReturn(Future.successful(List(history(sampleBook())))).when(documentDao).getDocumentHistory(any[JValue])
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]
@@ -197,7 +197,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     doReturn(Future.successful(UUID.randomUUID(), deletedDocuments)).when(documentDao).storeHistoryDocument(any[JValue], any[Boolean])
     doReturn(Future.successful(UUID.randomUUID(), deletedDocuments)).when(documentDao).storeCurrentDocument(any[JValue], any[Boolean])
 
-    private val documentHistory = List(sampleBook(), sampleBook(), sampleBook())
+    private val documentHistory = List(history(sampleBook()), history(sampleBook()), history(sampleBook()))
     doReturn(Future.successful(documentHistory)).when(documentDao).getDocumentHistory(any[JValue])
 
     val distributor = mock[DocumentDistributor]
@@ -231,7 +231,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     }
 
     /** Check that event processing failed and was treated correctly. */
-    def checkFailure[T <: Throwable](event: Event)(implicit manifest: Manifest[T]) {
+    def checkFailure[T <: Throwable](event: Event)(implicit manifest: Manifest[T]): Unit = {
       // Check event was passed on to error handler, along with the expected exception.
       val expectedExceptionClass = manifest.runtimeClass.asInstanceOf[Class[T]]
       verify(errorHandler).handleError(eql(event), isA(expectedExceptionClass))

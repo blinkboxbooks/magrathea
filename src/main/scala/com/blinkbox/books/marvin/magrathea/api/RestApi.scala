@@ -5,11 +5,12 @@ import java.util.UUID
 import akka.actor.ActorRefFactory
 import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.logging.DiagnosticExecutionContext
-import com.blinkbox.books.marvin.magrathea.message.DocumentDao
+import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, DocumentRevisions}
 import com.blinkbox.books.marvin.magrathea.{JsonDoc, SchemaConfig}
 import com.blinkbox.books.spray.v1.Error
+import com.blinkbox.books.spray.v2.Implicits.throwableMarshaller
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
-import org.slf4j.LoggerFactory
+import com.typesafe.scalalogging.StrictLogging
 import spray.http.HttpHeaders.RawHeader
 import spray.http.StatusCodes._
 import spray.routing._
@@ -20,8 +21,10 @@ import scala.util.control.NonFatal
 
 trait RestRoutes extends HttpService {
   def getCurrentBookById: Route
+  def getCurrentBookHistory: Route
   def reIndexBook: Route
   def getCurrentContributorById: Route
+  def getCurrentContributorHistory: Route
   def reIndexContributor: Route
   def search: Route
   def reIndexCurrentSearch: Route
@@ -29,11 +32,10 @@ trait RestRoutes extends HttpService {
 }
 
 class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao, indexService: IndexService)
-  (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport {
+  (implicit val actorRefFactory: ActorRefFactory) extends RestRoutes with CommonDirectives with v2.JsonSupport with StrictLogging {
 
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   implicit val timeout = config.timeout
-  implicit val log = LoggerFactory.getLogger(classOf[RestApi])
 
   private val bookError = uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
   private val contributorError = uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
@@ -44,6 +46,16 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
       withUUID(id) { uuid =>
         onSuccess(documentDao.getCurrentDocumentById(uuid, Option(schemas.book))) {
           _.fold(bookError)(docResponse)
+        }
+      }
+    }
+  }
+
+  override val getCurrentBookHistory = get {
+    path("books" / Segment / "history") { id =>
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.book).map(DocumentRevisions)) { history =>
+          if (history.size > 0) uncacheable(history) else bookError
         }
       }
     }
@@ -64,6 +76,16 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
       withUUID(id) { uuid =>
         onSuccess(documentDao.getCurrentDocumentById(uuid, Option(schemas.contributor))) {
           _.fold(contributorError)(docResponse)
+        }
+      }
+    }
+  }
+
+  override val getCurrentContributorHistory = get {
+    path("contributors" / Segment / "history") { id =>
+      withUUID(id) { uuid =>
+        onSuccess(documentDao.getDocumentHistory(uuid, schemas.contributor).map(DocumentRevisions)) { history =>
+          if (history.size > 0) uncacheable(history) else contributorError
         }
       }
     }
@@ -92,10 +114,10 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val reIndexCurrentSearch = put {
     path("search" / "reindex" / "current") {
       dynamic {
-        log.info("Starting re-indexing of 'current'...")
+        logger.info("Starting re-indexing of 'current'...")
         indexService.reIndexCurrent().onComplete {
-          case scala.util.Success(_) => log.info("Re-indexing of 'current' finished successfully.")
-          case scala.util.Failure(e) => log.error("Re-indexing of 'current' failed.", e)
+          case scala.util.Success(_) => logger.info("Re-indexing of 'current' finished successfully.")
+          case scala.util.Failure(e) => logger.error("Re-indexing of 'current' failed.", e)
         }
         uncacheable(Accepted, None)
       }
@@ -105,10 +127,10 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   override val reIndexHistorySearch = put {
     path("search" / "reindex" / "history") {
       dynamic {
-        log.info("Starting re-indexing of 'history'...")
+        logger.info("Starting re-indexing of 'history'...")
         indexService.reIndexHistory().onComplete {
-          case scala.util.Success(_) => log.info("Re-indexing of 'history' finished successfully.")
-          case scala.util.Failure(e) => log.error("Re-indexing of 'history' failed.", e)
+          case scala.util.Success(_) => logger.info("Re-indexing of 'history' finished successfully.")
+          case scala.util.Failure(e) => logger.error("Re-indexing of 'history' failed.", e)
         }
         uncacheable(Accepted, None)
       }
@@ -116,11 +138,11 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   }
 
   val routes = rootPath(config.localUrl.path) {
-    monitor() {
+    monitor(logger, throwableMarshaller) {
       respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
         handleExceptions(exceptionHandler) {
-          getCurrentBookById ~ getCurrentContributorById ~ search ~
-          reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
+          getCurrentBookById ~ getCurrentBookHistory ~ getCurrentContributorById ~ getCurrentContributorHistory ~
+          search ~ reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
         }
       }
     }
@@ -128,7 +150,7 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
 
   private def exceptionHandler(implicit log: LoggingContext) = ExceptionHandler {
     case NonFatal(e) =>
-      log.error(e, "Unhandled error")
+      logger.error("Unhandled error", e)
       uncacheable(InternalServerError, None)
   }
 
