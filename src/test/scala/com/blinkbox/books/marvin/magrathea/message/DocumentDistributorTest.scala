@@ -3,7 +3,8 @@ package com.blinkbox.books.marvin.magrathea.message
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor._
 import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig, TestHelper}
 import com.blinkbox.books.test.MockitoSyrup
-import org.json4s.JsonAST.JValue
+import org.json4s.JsonAST.{JNothing, JValue}
+import org.json4s.JsonDSL._
 import org.junit.runner.RunWith
 import org.mockito.Mockito._
 import org.scalatest.junit.JUnitRunner
@@ -92,9 +93,82 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
       unsellable: Boolean = false, noPublisher: Boolean = false, noCover: Boolean = false,
       noEpub: Boolean = false, notEnglish: Boolean = false, noDescription: Boolean = false,
       noUsablePrice: Boolean = false, racy: Boolean = false): JValue = {
-      val book = sampleBook()
-      // TODO: Logic for generating test cases here
-      book
+      val title: JValue = if (noTitle) JNothing else "title" -> "a title"
+      val availability: JValue = if (unavailable) JNothing else "availability" ->
+        ("availabilityCode" -> ("code" -> "NP") ~ ("available" -> true)) ~
+        ("notificationType" -> ("code" -> "02") ~ ("available" -> true))
+      val suppliable: JValue = if (unsuppliable) JNothing else "supplyRights" -> ("WORLD" -> true)
+      val sellable: JValue = if (unsellable) JNothing else "salesRights" -> ("WORLD" -> true)
+      val publisher: JValue = if (noPublisher) JNothing else
+        ("publisher" -> "Worthy Publishing") ~ ("imprint" -> "Worthy Publishing")
+      val cover: JValue = if (noCover) JNothing else "images" -> List(
+        ("classification" -> List(
+          ("realm" -> "type") ~
+          ("id" -> "front_cover")
+        )) ~
+        ("token" -> "bbbmap:covers:mnop3456") ~
+        ("width" -> 1200) ~
+        ("height" -> 2500) ~
+        ("size" -> 15485))
+      val epub: JValue = if (noEpub) JNothing else "media" -> ("epubs" ->
+        ("best" -> "") ~
+        ("items" -> List(
+          ("classification" -> List(
+            ("realm" -> "epub_id") ~ ("id" -> "abc1234"),
+            ("realm" -> "type") ~ ("id" -> "full_bbbdrm")
+          )) ~
+          ("token" -> "bbbmap:epub-encrypted:abcd1234") ~
+          ("keyId" -> "987654321QWERTYUIOP") ~
+          ("wordCount" -> 37462) ~
+          ("size" -> 254850),
+          ("classification" -> List(
+            ("realm" -> "epub_id") ~ ("id" -> "abc1234"),
+            ("realm" -> "type") ~ ("id" -> "sample")
+          )) ~
+          ("token" -> "bbbmap:epub-sample:efgh5678") ~
+          ("wordCount" -> 3746) ~
+          ("size" -> 25485),
+          ("classification" -> List(
+            ("realm" -> "epub_id") ~ ("id" -> "efgh5678"),
+            ("realm" -> "type") ~ ("id" -> "origin")
+          )) ~
+          ("token" -> "bbbmap:publishers:ijkl9012") ~
+          ("wordCount" -> 37462) ~
+          ("size" -> 254850)
+        ))
+      )
+      val english: JValue = if (notEnglish) JNothing else "languages" -> List("eng")
+      val description: JValue = if (noDescription) JNothing else "descriptions" -> (
+        ("best" -> List(
+          ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
+        )) ~
+        ("items" -> List(
+          ("classification" -> List(
+            ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
+          )) ~
+          ("type" -> "03") ~
+          ("content" -> "Blah blah")
+        ))
+      )
+      val price: JValue = if (noUsablePrice) JNothing else "prices" -> List(
+        ("tax" -> List.empty) ~
+        ("amount" -> 21.99) ~
+        ("currency" -> "GBP") ~
+        ("isAgency" -> false) ~
+        ("includesTax" -> false) ~
+        ("discountRate" -> 0.525) ~
+        ("applicableRegions" -> "")
+      )
+      val racyField: JValue = if (!racy) JNothing else "subjects" -> List(
+        ("code" -> "REL012010") ~ ("type" -> "BISAC")
+      )
+      sampleBook(
+        ("isbn" -> "9780111222333") ~
+        ("dates" -> List("publish" -> "2013-03-01")) ~
+        ("format" -> ("epubType" -> "029") ~ ("productForm" -> "DG") ~ ("marvinIncompatible" -> false))
+        merge title merge availability merge suppliable merge sellable merge publisher merge cover
+          merge epub merge english merge description merge price merge racyField
+      )
     }
 
     def shouldNotBeSellableWith(status: Status, reason: Reason.Value*): Unit = {
