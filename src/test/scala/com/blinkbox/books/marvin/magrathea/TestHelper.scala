@@ -23,7 +23,7 @@ trait TestHelper extends v2.JsonSupport with JsonMethods {
   
   def getRandomIsbn(num: Int = Random.nextInt(1000000)) = s"9780007${"%06d".format(num)}"
 
-  def sampleBook(extraContent: JValue = JNothing, includeId: Boolean = true): JValue = {
+  def sampleBook(extraContent: JValue = JNothing): JValue = {
     ("$schema" -> "ingestion.book.metadata.v2") ~
     ("classification" -> List(
       ("realm" -> "isbn") ~

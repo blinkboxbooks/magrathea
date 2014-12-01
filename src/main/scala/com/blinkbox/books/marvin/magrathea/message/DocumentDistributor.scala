@@ -35,4 +35,8 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
       case x => throw new IllegalArgumentException(s"Cannot get distribution information from unsupported schema: $x")
     }
   }
+
+  def status(doc: JValue): DocumentDistributor.Status = {
+    DocumentDistributor.Status(sellable = false, None)
+  }
 }
