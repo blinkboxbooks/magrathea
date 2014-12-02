@@ -94,11 +94,11 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
       noEpub: Boolean = false, notEnglish: Boolean = false, noDescription: Boolean = false,
       noUsablePrice: Boolean = false, racy: Boolean = false): JValue = {
       val title: JValue = if (noTitle) JNothing else "title" -> "a title"
-      val availability: JValue = if (unavailable) JNothing else "availability" ->
-        ("availabilityCode" -> ("code" -> "NP") ~ ("available" -> true)) ~
-        ("notificationType" -> ("code" -> "02") ~ ("available" -> true))
-      val suppliable: JValue = if (unsuppliable) JNothing else "supplyRights" -> ("WORLD" -> true)
-      val sellable: JValue = if (unsellable) JNothing else "salesRights" -> ("WORLD" -> true)
+      val availability: JValue = "availability" ->
+        ("availabilityCode" -> ("code" -> "NP") ~ ("available" -> !unavailable)) ~
+        ("notificationType" -> ("code" -> "02") ~ ("available" -> !unavailable))
+      val suppliable: JValue = "supplyRights" -> ("WORLD" -> !unsuppliable)
+      val sellable: JValue = "salesRights" -> ("WORLD" -> !unsellable)
       val publisher: JValue = if (noPublisher) JNothing else
         ("publisher" -> "Worthy Publishing") ~ ("imprint" -> "Worthy Publishing")
       val cover: JValue = if (noCover) JNothing else "images" -> List(
@@ -109,7 +109,8 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
         ("token" -> "bbbmap:covers:mnop3456") ~
         ("width" -> 1200) ~
         ("height" -> 2500) ~
-        ("size" -> 15485))
+        ("size" -> 15485)
+      )
       val epub: JValue = if (noEpub) JNothing else "media" -> ("epubs" ->
         ("best" -> "") ~
         ("items" -> List(
@@ -165,7 +166,8 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
       sampleBook(
         ("isbn" -> "9780111222333") ~
         ("dates" -> List("publish" -> "2013-03-01")) ~
-        ("format" -> ("epubType" -> "029") ~ ("productForm" -> "DG") ~ ("marvinIncompatible" -> false))
+        ("format" -> ("epubType" -> "029") ~ ("productForm" -> "DG") ~ ("marvinIncompatible" -> false)) ~
+        ("media" -> List.empty)
         merge title merge availability merge suppliable merge sellable merge publisher merge cover
           merge epub merge english merge description merge price merge racyField
       )
