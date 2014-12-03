@@ -51,7 +51,7 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
   }
 }
 
-object DocumentStatus extends v2.JsonSupport with StrictLogging with JsonMethods {
+object DocumentStatus extends v2.JsonSupport {
   import org.json4s.JsonDSL._
 
   type Checker = JValue => Option[List[Reason.Value]]
@@ -62,6 +62,24 @@ object DocumentStatus extends v2.JsonSupport with StrictLogging with JsonMethods
     case (_, JNothing, JBool(row), reason) if !row => Some(List(reason))
     case _ => None
   }
+
+  private val classificationChecker: (JValue, JValue, Reason.Value, => (JValue, List[JField]) => Boolean) => Option[List[Reason.Value]] = {
+    case (JArray(best :: Nil), JObject(fields), reason, check) =>
+      val fieldsWithBestClassification = fields.filter {
+        case ("classification", JArray(classification)) => classification.contains(best)
+        case _ => false
+      }
+      if (check(best, fieldsWithBestClassification)) None else Some(List(reason))
+    case (JArray(best :: Nil), JArray(classification), reason, check) =>
+      if (classification.contains(best) && check(best, classification.map("classification" -> _))) None else Some(List(reason))
+    case (_, _, reason, _) => Some(List(reason))
+  }
+
+  private val classificationExists: (List[JField], JValue => Boolean) => Boolean = (fields, exists) =>
+    fields.exists {
+      case ("classification", JArray(classification)) => classification.exists(exists)
+      case _ => false
+    }
 
   val TitleChecker: Checker = _ \ "title" match {
     case JString(title) if title.nonEmpty => None
@@ -105,31 +123,22 @@ object DocumentStatus extends v2.JsonSupport with StrictLogging with JsonMethods
     }
   }
 
-  val EpubChecker: Checker = doc =>
-    (doc \ "media" \ "epubs" \ "best", doc \ "media" \ "epubs" \ "items" \\ "classification") match {
-      case (JArray(best :: Nil), JObject(fields)) =>
-        val fieldsWithBestClassification = fields.filter {
-          case ("classification", JArray(classification)) => classification.contains(best)
-          case _ => false
-        }
-        val containsSample = fieldsWithBestClassification.exists {
-          case ("classification", JArray(classification)) => classification.exists(_ \ "id" == JString("sample"))
-          case _ => false
-        }
-        val containsDrm = fieldsWithBestClassification.exists {
-          case ("classification", JArray(classification)) => classification.exists(_ \ "id" == JString("full_bbbdrm"))
-          case _ => false
-        }
-        if (containsSample && containsDrm) None else Some(List(Reason.NoEpub))
-      case _ => Some(List(Reason.NoEpub))
-    }
+  val EpubChecker: Checker = doc => classificationChecker(doc \ "media" \ "epubs" \ "best",
+    doc \ "media" \ "epubs" \ "items" \\ "classification", Reason.NoEpub, (best, fieldsWithBestClassification) => {
+      val containsSample = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("sample"))
+      val containsDrm = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("full_bbbdrm"))
+      containsSample && containsDrm
+    })
 
   val EnglishChecker: Checker = _ \ "languages" match {
     case JArray(languages) if languages.contains(JString("eng")) => None
     case _ => Some(List(Reason.NotEnglish))
   }
 
-  val DescriptionChecker: Checker = doc => None
+  val DescriptionChecker: Checker = doc => classificationChecker(doc \ "descriptions" \ "best",
+    doc \ "descriptions" \ "items" \\ "classification", Reason.NoDescription, (_, fieldsWithBestClassification) => {
+      fieldsWithBestClassification.nonEmpty
+    })
 
   val UsablePriceChecker: Checker = _ \ "prices" \ "includesTax" match {
     case JBool(includesTax) if !includesTax => None

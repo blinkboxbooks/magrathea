@@ -78,7 +78,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
 
   it should "not distribute a book without title, ePub and description" in new TestFixture {
     val status = distributor.status(distBook(noTitle = true, noEpub = true, noDescription = true))
-    shouldNotBeSellableWith(status, Reason.NoTitle, Reason.NoEpub, Reason.NoDescription)
+    shouldNotBeSellableWith(status, Reason.NoDescription, Reason.NoEpub, Reason.NoTitle)
   }
 
   trait TestFixture extends TestHelper {
@@ -115,8 +115,8 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
         ("realm" -> "epub_id") ~ ("id" -> (if (noEpub) "xxx" else "abc1234"))
       )))
       val english: JValue = if (notEnglish) JNothing else "languages" -> List("eng")
-      val description: JValue = if (noDescription) JNothing else "descriptions" -> ("best" -> List(
-        ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
+      val description: JValue = "descriptions" -> ("best" -> List(
+        ("realm" -> "onix-codelist-33") ~ ("id" -> (if (noDescription) "xx" else "03"))
       ))
       val price: JValue = "prices" -> List(
         ("tax" -> List.empty) ~
