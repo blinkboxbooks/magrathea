@@ -51,7 +51,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
     shouldNotBeSellableWith(status, Reason.NoCover)
   }
 
-  it should "not distribute a book without an ePub" in new TestFixture {
+  it should "not distribute a book without an epub" in new TestFixture {
     val status = distributor.status(distBook(noEpub = true))
     shouldNotBeSellableWith(status, Reason.NoEpub)
   }
@@ -111,8 +111,8 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
         ("height" -> 2500) ~
         ("size" -> 15485)
       )
-      val epub: JValue = if (noEpub) JNothing else "media" -> ("epubs" -> ("best" -> List(
-        ("realm" -> "epub_id") ~ ("id" -> "abcd1234")
+      val epub: JValue = "media" -> ("epubs" -> ("best" -> List(
+        ("realm" -> "epub_id") ~ ("id" -> (if (noEpub) "xxx" else "abc1234"))
       )))
       val english: JValue = if (notEnglish) JNothing else "languages" -> List("eng")
       val description: JValue = if (noDescription) JNothing else "descriptions" -> ("best" -> List(

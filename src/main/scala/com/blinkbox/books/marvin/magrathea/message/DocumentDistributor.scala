@@ -51,7 +51,7 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
   }
 }
 
-object DocumentStatus extends v2.JsonSupport {
+object DocumentStatus extends v2.JsonSupport with StrictLogging with JsonMethods {
   import org.json4s.JsonDSL._
 
   type Checker = JValue => Option[List[Reason.Value]]
@@ -97,7 +97,7 @@ object DocumentStatus extends v2.JsonSupport {
       case JArray(classification) if classification.contains(frontCover) => None
       case JObject(fields) =>
         val hasCover = fields.exists {
-          case ("classification", JArray(classification)) if classification.contains(frontCover) => true
+          case ("classification", JArray(classification)) => classification.contains(frontCover)
           case _ => false
         }
         if (!hasCover) Some(List(Reason.NoCover)) else None
@@ -105,7 +105,24 @@ object DocumentStatus extends v2.JsonSupport {
     }
   }
 
-  val EpubChecker: Checker = doc => None
+  val EpubChecker: Checker = doc =>
+    (doc \ "media" \ "epubs" \ "best", doc \ "media" \ "epubs" \ "items" \\ "classification") match {
+      case (JArray(best :: Nil), JObject(fields)) =>
+        val fieldsWithBestClassification = fields.filter {
+          case ("classification", JArray(classification)) => classification.contains(best)
+          case _ => false
+        }
+        val containsSample = fieldsWithBestClassification.exists {
+          case ("classification", JArray(classification)) => classification.exists(_ \ "id" == JString("sample"))
+          case _ => false
+        }
+        val containsDrm = fieldsWithBestClassification.exists {
+          case ("classification", JArray(classification)) => classification.exists(_ \ "id" == JString("full_bbbdrm"))
+          case _ => false
+        }
+        if (containsSample && containsDrm) None else Some(List(Reason.NoEpub))
+      case _ => Some(List(Reason.NoEpub))
+    }
 
   val EnglishChecker: Checker = _ \ "languages" match {
     case JArray(languages) if languages.contains(JString("eng")) => None
