@@ -56,6 +56,13 @@ object DocumentStatus extends v2.JsonSupport {
 
   type Checker = JValue => Option[List[Reason.Value]]
 
+  private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[List[Reason.Value]] = {
+    case (JBool(world), _, _, reason) if !world => Some(List(reason))
+    case (_, JBool(gb), _, reason) if !gb => Some(List(reason))
+    case (_, JNothing, JBool(row), reason) if !row => Some(List(reason))
+    case _ => None
+  }
+
   val TitleChecker: Checker = _ \ "title" match {
     case JString(title) if title.nonEmpty => None
     case _ => Some(List(Reason.NoTitle))
@@ -69,13 +76,6 @@ object DocumentStatus extends v2.JsonSupport {
         case _ => false
       }
       if (!allAvailable) Some(List(Reason.Unavailable)) else None
-    case _ => None
-  }
-
-  private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[List[Reason.Value]] = {
-    case (JBool(world), _, _, reason) if !world => Some(List(reason))
-    case (_, JBool(gb), _, reason) if !gb => Some(List(reason))
-    case (_, JNothing, JBool(row), reason) if !row => Some(List(reason))
     case _ => None
   }
 
@@ -114,7 +114,16 @@ object DocumentStatus extends v2.JsonSupport {
 
   val DescriptionChecker: Checker = doc => None
 
-  val UsablePriceChecker: Checker = doc => None
+  val UsablePriceChecker: Checker = _ \ "prices" \ "includesTax" match {
+    case JBool(includesTax) if !includesTax => None
+    case JObject(fields) =>
+      val usablePriceExists = fields.exists {
+        case ("includesTax", JBool(includesTax)) => !includesTax
+        case _ => false
+      }
+      if (!usablePriceExists) Some(List(Reason.NoUsablePrice)) else None
+    case _ => Some(List(Reason.NoUsablePrice))
+  }
 
   val RacyTitleChecker: Checker = doc => None
 }

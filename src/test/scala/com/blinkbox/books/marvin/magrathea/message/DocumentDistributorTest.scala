@@ -111,9 +111,37 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
         ("height" -> 2500) ~
         ("size" -> 15485)
       )
-      val epub: JValue = if (noEpub) JNothing else "media" -> ("epubs" ->
-        ("best" -> "") ~
-        ("items" -> List(
+      val epub: JValue = if (noEpub) JNothing else "media" -> ("epubs" -> ("best" -> List(
+        ("realm" -> "epub_id") ~ ("id" -> "abcd1234")
+      )))
+      val english: JValue = if (notEnglish) JNothing else "languages" -> List("eng")
+      val description: JValue = if (noDescription) JNothing else "descriptions" -> ("best" -> List(
+        ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
+      ))
+      val price: JValue = "prices" -> List(
+        ("tax" -> List.empty) ~
+        ("amount" -> 21.99) ~
+        ("currency" -> "GBP") ~
+        ("isAgency" -> false) ~
+        ("includesTax" -> noUsablePrice) ~
+        ("discountRate" -> 0.525) ~
+        ("applicableRegions" -> List.empty)
+      )
+      val racyField: JValue = if (!racy) JNothing else "subjects" -> List(
+        ("code" -> "REL012010") ~ ("type" -> "BISAC")
+      )
+      sampleBook(
+        ("isbn" -> "9780111222333") ~
+        ("dates" -> List("publish" -> "2013-03-01")) ~
+        ("format" -> ("epubType" -> "029") ~ ("productForm" -> "DG") ~ ("marvinIncompatible" -> false)) ~
+        ("descriptions" -> ("items" -> List(
+          ("classification" -> List(
+            ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
+          )) ~
+          ("type" -> "03") ~
+          ("content" -> "Blah blah")
+        ))) ~
+        ("media" -> ("epubs" -> ("items" -> List(
           ("classification" -> List(
             ("realm" -> "epub_id") ~ ("id" -> "abc1234"),
             ("realm" -> "type") ~ ("id" -> "full_bbbdrm")
@@ -136,38 +164,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
           ("token" -> "bbbmap:publishers:ijkl9012") ~
           ("wordCount" -> 37462) ~
           ("size" -> 254850)
-        ))
-      )
-      val english: JValue = if (notEnglish) JNothing else "languages" -> List("eng")
-      val description: JValue = if (noDescription) JNothing else "descriptions" -> (
-        ("best" -> List(
-          ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
-        )) ~
-        ("items" -> List(
-          ("classification" -> List(
-            ("realm" -> "onix-codelist-33") ~ ("id" -> "03")
-          )) ~
-          ("type" -> "03") ~
-          ("content" -> "Blah blah")
-        ))
-      )
-      val price: JValue = if (noUsablePrice) JNothing else "prices" -> List(
-        ("tax" -> List.empty) ~
-        ("amount" -> 21.99) ~
-        ("currency" -> "GBP") ~
-        ("isAgency" -> false) ~
-        ("includesTax" -> false) ~
-        ("discountRate" -> 0.525) ~
-        ("applicableRegions" -> "")
-      )
-      val racyField: JValue = if (!racy) JNothing else "subjects" -> List(
-        ("code" -> "REL012010") ~ ("type" -> "BISAC")
-      )
-      sampleBook(
-        ("isbn" -> "9780111222333") ~
-        ("dates" -> List("publish" -> "2013-03-01")) ~
-        ("format" -> ("epubType" -> "029") ~ ("productForm" -> "DG") ~ ("marvinIncompatible" -> false)) ~
-        ("media" -> List.empty)
+        ))))
         merge title merge availability merge suppliable merge sellable merge publisher merge cover
           merge epub merge english merge description merge price merge racyField
       )
