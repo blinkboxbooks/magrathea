@@ -6,6 +6,7 @@ import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Reason
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Reason.Reason
+import com.blinkbox.books.marvin.magrathea.message.DocumentStatus.Checker.Checker
 import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig}
 import com.blinkbox.books.spray.v2
 import com.typesafe.scalalogging.StrictLogging
@@ -45,7 +46,7 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
 
   def status(doc: JValue): DocumentDistributor.Status = {
     val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
-      check(doc).fold(acc)(_ union acc)
+      check(doc).fold(acc)(acc + _)
     }
     DocumentDistributor.Status(sellable = reasons.isEmpty, if (reasons.nonEmpty) Some(reasons) else None)
   }
@@ -54,11 +55,61 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
 object DocumentStatus extends v2.JsonSupport {
   import org.json4s.JsonDSL._
 
-  type Checker = JValue => Option[Set[Reason.Value]]
-
   object Checker {
+    type Checker = JValue => Option[Reason.Value]
+
     def apply(f: Checker) = f
+
+    def hasItemInSet[T](set: Set[T], item: T): Boolean = set.contains(item)
+
+    def hasRestrictedImprint(set: Set[String], item: String): Boolean = hasItemInSet(set, item)
+
+    def hasRestrictedPublisher(set: Set[String], item: String): Boolean = hasItemInSet(set, item)
+
+    def subject2Tuple(subject: JValue): (String, String) =
+      subject match {
+        case JObject(fields) => (fields.find(_._1 == "type"), fields.find(_._1 == "code")) match {
+          case (Some((_, JString(typeVal))), Some((_, JString(codeVal)))) => (typeVal, codeVal)
+          case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
+        }
+        case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
+      }
+
+    def hasRestrictedSubject(set: Set[(String, String)], subjects: List[JValue]): Boolean =
+      subjects.map(subject2Tuple).exists(hasItemInSet(set, _))
+
+    def checkRights(world: JValue, gb: JValue, row: JValue, reason: Reason.Value): Option[Reason.Value] =
+      (world, gb, row) match {
+        case (JBool(includesWorld), _, _) if !includesWorld => Some(reason)
+        case (_, JBool(includesGb), _) if !includesGb => Some(reason)
+        case (_, JNothing, JBool(includesRestOfWorld)) if !includesRestOfWorld => Some(reason)
+        case _ => None
+      }
+
+    def checkClassification(bestClassification: JValue, classifications: JValue, reason: Reason.Value,
+      predicate: (JValue, List[JField]) => Boolean): Option[Reason.Value] = {
+      (bestClassification, classifications) match {
+        case (JArray(best :: Nil), JObject(fields)) =>
+          val classificationFields = fields.filter {
+            case ("classification", JArray(classification)) => classification.contains(best)
+            case _ => false
+          }
+          if (predicate(best, classificationFields)) None else Some(reason)
+        case (JArray(best :: Nil), JArray(classification)) =>
+          val classificationFields = classification.map("classification" -> _)
+          if (predicate(best, classificationFields) && classification.contains(best)) None else Some(reason)
+        case _ => Some(reason)
+      }
+    }
+
+    def classificationExists(fields: List[JField], predicate: JValue => Boolean): Boolean =
+      fields.exists {
+        case ("classification", JArray(classification)) => classification.exists(predicate)
+        case _ => false
+      }
   }
+
+  import com.blinkbox.books.marvin.magrathea.message.DocumentStatus.Checker._
 
   private val RestrictedImprints = Set(
     "Xcite Books",
@@ -85,89 +136,49 @@ object DocumentStatus extends v2.JsonSupport {
     ("BIC", "FP")
   )
 
-  private def hasItemInSet[T](set: Set[T], item: T): Boolean = set.contains(item)
-
-  private val hasRestrictedImprint: (Set[String], String) => Boolean = hasItemInSet
-
-  private val hasRestrictedPublisher: (Set[String], String) => Boolean = hasItemInSet
-
-  private val subject2Tuple: JValue => (String, String) = {
-    case JObject(fields) => (fields.find(_._1 == "type"), fields.find(_._1 == "code")) match {
-      case (Some((_, JString(typeVal))), Some((_, JString(codeVal)))) => (typeVal, codeVal)
-      case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
-    }
-    case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
-  }
-
-  private val hasRestrictedSubject: (Set[(String, String)], List[JValue]) => Boolean = (set, subjects) =>
-    subjects.map(subject2Tuple).exists(hasItemInSet(set, _))
-
-  private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[Set[Reason.Value]] = {
-    case (JBool(world), _, _, reason) if !world => Some(Set(reason))
-    case (_, JBool(gb), _, reason) if !gb => Some(Set(reason))
-    case (_, JNothing, JBool(row), reason) if !row => Some(Set(reason))
-    case _ => None
-  }
-
-  private val classificationChecker: (JValue, JValue, Reason.Value, => (JValue, List[JField]) => Boolean) => Option[Set[Reason.Value]] = {
-    case (JArray(best :: Nil), JObject(fields), reason, check) =>
-      val fieldsWithBestClassification = fields.filter {
-        case ("classification", JArray(classification)) => classification.contains(best)
-        case _ => false
-      }
-      if (check(best, fieldsWithBestClassification)) None else Some(Set(reason))
-    case (JArray(best :: Nil), JArray(classification), reason, check) =>
-      if (classification.contains(best) && check(best, classification.map("classification" -> _))) None else Some(Set(reason))
-    case (_, _, reason, _) => Some(Set(reason))
-  }
-
-  private val classificationExists: (List[JField], JValue => Boolean) => Boolean = (fields, exists) =>
-    fields.exists {
-      case ("classification", JArray(classification)) => classification.exists(exists)
-      case _ => false
-    }
-
   val TitleChecker = Checker { doc =>
     doc \ "title" match {
       case JString(title) if title.nonEmpty => None
-      case _ => Some(Set(Reason.NoTitle))
+      case _ => Some(Reason.NoTitle)
     }
   }
 
   val AvailabilityChecker = Checker { doc =>
     doc \\ "available" match {
-      case JBool(available) if !available => Some(Set(Reason.Unavailable))
+      case JBool(available) if !available => Some(Reason.Unavailable)
       case JObject(fields) =>
         val allAvailable = fields.forall {
           case (_, JBool(available)) => available
           case _ => false
         }
-        if (!allAvailable) Some(Set(Reason.Unavailable)) else None
+        if (!allAvailable) Some(Reason.Unavailable) else None
       case _ => None
     }
   }
 
   val SuppliableChecker = Checker { doc =>
-    rightsChecker(
+    checkRights(
       doc \ "supplyRights" \ "WORLD",
       doc \ "supplyRights" \ "GB",
       doc \ "supplyRights" \ "ROW",
-      Reason.Unsuppliable)
+      Reason.Unsuppliable
+    )
   }
 
   val SellableChecker = Checker { doc =>
-    rightsChecker(
+    checkRights(
       doc \ "salesRights" \ "WORLD",
       doc \ "salesRights" \ "GB",
       doc \ "salesRights" \ "ROW",
-      Reason.Unsellable)
+      Reason.Unsellable
+    )
   }
 
   val PublisherChecker = Checker { doc =>
     (doc \ "publisher", doc \ "imprint") match {
       case (JString(publisher), _) if publisher.nonEmpty => None
       case (_, JString(imprint)) if imprint.nonEmpty => None
-      case _ => Some(Set(Reason.NoPublisher))
+      case _ => Some(Reason.NoPublisher)
     }
   }
 
@@ -180,19 +191,19 @@ object DocumentStatus extends v2.JsonSupport {
           case ("classification", JArray(classification)) => classification.contains(frontCover)
           case _ => false
         }
-        if (!hasCover) Some(Set(Reason.NoCover)) else None
-      case _ => Some(Set(Reason.NoCover))
+        if (!hasCover) Some(Reason.NoCover) else None
+      case _ => Some(Reason.NoCover)
     }
   }
 
   val EpubChecker = Checker { doc =>
-    classificationChecker(
+    checkClassification(
       doc \ "media" \ "epubs" \ "best",
       doc \ "media" \ "epubs" \ "items" \\ "classification",
       Reason.NoEpub,
-      (best, fieldsWithBestClassification) => {
-        val containsSample = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("sample"))
-        val containsDrm = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("full_bbbdrm"))
+      (best, classificationFields) => {
+        val containsSample = classificationExists(classificationFields, _ \ "id" == JString("sample"))
+        val containsDrm = classificationExists(classificationFields, _ \ "id" == JString("full_bbbdrm"))
         containsSample && containsDrm
       }
     )
@@ -201,17 +212,17 @@ object DocumentStatus extends v2.JsonSupport {
   val EnglishChecker = Checker { doc =>
     doc \ "languages" match {
       case JArray(languages) if languages.contains(JString("eng")) => None
-      case _ => Some(Set(Reason.NotEnglish))
+      case _ => Some(Reason.NotEnglish)
     }
   }
 
   val DescriptionChecker = Checker { doc =>
-    classificationChecker(
+    checkClassification(
       doc \ "descriptions" \ "best",
       doc \ "descriptions" \ "items" \\ "classification",
       Reason.NoDescription,
-      (_, fieldsWithBestClassification) => {
-        fieldsWithBestClassification.nonEmpty
+      (_, classificationFields) => {
+        classificationFields.nonEmpty
       }
     )
   }
@@ -224,8 +235,8 @@ object DocumentStatus extends v2.JsonSupport {
           case ("includesTax", JBool(includesTax)) => !includesTax
           case _ => false
         }
-        if (!usablePriceExists) Some(Set(Reason.NoUsablePrice)) else None
-      case _ => Some(Set(Reason.NoUsablePrice))
+        if (!usablePriceExists) Some(Reason.NoUsablePrice) else None
+      case _ => Some(Reason.NoUsablePrice)
     }
   }
 
@@ -234,7 +245,7 @@ object DocumentStatus extends v2.JsonSupport {
       case (JString(imprint), JString(publisher), JArray(subjects)) if
         hasRestrictedImprint(RestrictedImprints, imprint) ||
         hasRestrictedPublisher(RestrictedPublishers, publisher) ||
-        hasRestrictedSubject(RestrictedSubjects, subjects) => Some(Set(Reason.Racy))
+        hasRestrictedSubject(RestrictedSubjects, subjects) => Some(Reason.Racy)
       case _ => None
     }
   }
