@@ -54,7 +54,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     parse(json)
   }
 
-  private def normaliseContributors(doc: JValue): JValue = {
+  private def normaliseContributors(doc: JValue): JValue =
     (doc \ "$schema", doc \ "contributors") match {
       case (JString(schema), JArray(arr)) if schema == schemas.book =>
         val newArr: JValue = arr.map { contributor =>
@@ -71,7 +71,6 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
         doc.overwriteDirectField("contributors", newArr)
       case _ => doc
     }
-  }
 
   private def handleDocument(document: JValue, deleteOld: Boolean = true): Future[Unit] = for {
     (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
@@ -81,15 +80,16 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
 
-  private def handleContributors(document: JValue): Future[Unit] = document \ "contributors" match {
-    case JArray(arr) =>
-      logger.info("Merging contributors")
-      val source = document \ "source"
-      Future.sequence(arr.map { contributor =>
-        handleDocument(contribufy(contributor, source), deleteOld = false)
-      }).map(_ => ())
-    case _ => Future.successful(())
-  }
+  private def handleContributors(document: JValue): Future[Unit] =
+    document \ "contributors" match {
+      case JArray(arr) =>
+        logger.info("Merging contributors")
+        val source = document \ "source"
+        Future.sequence(arr.map { contributor =>
+          handleDocument(contribufy(contributor, source), deleteOld = false)
+        }).map(_ => ())
+      case _ => Future.successful(())
+    }
 
   private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
     val indexed = indexService.indexCurrentDocument(insertId, document).map(_ => ())
