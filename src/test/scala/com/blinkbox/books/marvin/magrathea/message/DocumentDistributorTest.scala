@@ -1,7 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
+import com.blinkbox.books.marvin.magrathea.message.Checker._
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor._
-import com.blinkbox.books.marvin.magrathea.message.DocumentStatus.Checker._
 import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig, TestHelper}
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.JsonAST.{JNothing, JValue}
