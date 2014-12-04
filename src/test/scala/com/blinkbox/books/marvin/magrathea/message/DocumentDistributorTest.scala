@@ -1,6 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor._
+import com.blinkbox.books.marvin.magrathea.message.DocumentStatus.Checker._
 import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig, TestHelper}
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.JsonAST.{JNothing, JValue}
@@ -23,62 +24,62 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
 
   it should "not distribute a book without a title" in new TestFixture {
     val status = distributor.status(distBook(noTitle = true))
-    shouldNotBeSellableWith(status, Reason.NoTitle)
+    shouldNotBeSellableWith(status, NoTitle)
   }
 
   it should "not distribute a book marked as unavailable by publisher" in new TestFixture {
     val status = distributor.status(distBook(unavailable = true))
-    shouldNotBeSellableWith(status, Reason.Unavailable)
+    shouldNotBeSellableWith(status, Unavailable)
   }
 
   it should "not distribute a book without supply rights" in new TestFixture {
     val status = distributor.status(distBook(unsuppliable = true))
-    shouldNotBeSellableWith(status, Reason.Unsuppliable)
+    shouldNotBeSellableWith(status, Unsuppliable)
   }
 
   it should "not distribute a book without sales rights" in new TestFixture {
     val status = distributor.status(distBook(unsellable = true))
-    shouldNotBeSellableWith(status, Reason.Unsellable)
+    shouldNotBeSellableWith(status, Unsellable)
   }
 
   it should "not distribute a book without a publisher" in new TestFixture {
     val status = distributor.status(distBook(noPublisher = true))
-    shouldNotBeSellableWith(status, Reason.NoPublisher)
+    shouldNotBeSellableWith(status, NoPublisher)
   }
 
   it should "not distribute a book without a cover" in new TestFixture {
     val status = distributor.status(distBook(noCover = true))
-    shouldNotBeSellableWith(status, Reason.NoCover)
+    shouldNotBeSellableWith(status, NoCover)
   }
 
   it should "not distribute a book without an epub" in new TestFixture {
     val status = distributor.status(distBook(noEpub = true))
-    shouldNotBeSellableWith(status, Reason.NoEpub)
+    shouldNotBeSellableWith(status, NoEpub)
   }
 
   it should "not distribute a book without english in languages" in new TestFixture {
     val status = distributor.status(distBook(notEnglish = true))
-    shouldNotBeSellableWith(status, Reason.NotEnglish)
+    shouldNotBeSellableWith(status, NotEnglish)
   }
 
   it should "not distribute a book without a description" in new TestFixture {
     val status = distributor.status(distBook(noDescription = true))
-    shouldNotBeSellableWith(status, Reason.NoDescription)
+    shouldNotBeSellableWith(status, NoDescription)
   }
 
   it should "not distribute a book without a usable price" in new TestFixture {
     val status = distributor.status(distBook(noUsablePrice = true))
-    shouldNotBeSellableWith(status, Reason.NoUsablePrice)
+    shouldNotBeSellableWith(status, NoUsablePrice)
   }
 
   it should "not distribute a book with racy titles" in new TestFixture {
     val status = distributor.status(distBook(racy = true))
-    shouldNotBeSellableWith(status, Reason.Racy)
+    shouldNotBeSellableWith(status, Racy)
   }
 
   it should "not distribute a book without title, ePub and description" in new TestFixture {
     val status = distributor.status(distBook(noTitle = true, noEpub = true, noDescription = true))
-    shouldNotBeSellableWith(status, Reason.NoDescription, Reason.NoEpub, Reason.NoTitle)
+    shouldNotBeSellableWith(status, NoDescription, NoEpub, NoTitle)
   }
 
   trait TestFixture extends TestHelper {
@@ -170,7 +171,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
       )
     }
 
-    def shouldNotBeSellableWith(status: Status, reason: Reason.Value*): Unit = {
+    def shouldNotBeSellableWith(status: Status, reason: Reason*): Unit = {
       status.sellable shouldEqual false
       status.reasons shouldEqual Some(reason.toSet)
     }
