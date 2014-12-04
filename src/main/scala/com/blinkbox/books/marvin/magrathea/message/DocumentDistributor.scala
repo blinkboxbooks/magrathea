@@ -56,6 +56,10 @@ object DocumentStatus extends v2.JsonSupport {
 
   type Checker = JValue => Option[Set[Reason.Value]]
 
+  object Checker {
+    def apply(f: Checker) = f
+  }
+
   private val RestrictedImprints = Set(
     "Xcite Books",
     "Total-E-Bound Publishing",
@@ -123,35 +127,51 @@ object DocumentStatus extends v2.JsonSupport {
       case _ => false
     }
 
-  val TitleChecker: Checker = _ \ "title" match {
-    case JString(title) if title.nonEmpty => None
-    case _ => Some(Set(Reason.NoTitle))
+  val TitleChecker = Checker { doc =>
+    doc \ "title" match {
+      case JString(title) if title.nonEmpty => None
+      case _ => Some(Set(Reason.NoTitle))
+    }
   }
 
-  val AvailabilityChecker: Checker = _ \\ "available" match {
-    case JBool(available) if !available => Some(Set(Reason.Unavailable))
-    case JObject(fields) =>
-      val allAvailable = fields.forall {
-        case (_, JBool(available)) => available
-        case _ => false
-      }
-      if (!allAvailable) Some(Set(Reason.Unavailable)) else None
-    case _ => None
+  val AvailabilityChecker = Checker { doc =>
+    doc \\ "available" match {
+      case JBool(available) if !available => Some(Set(Reason.Unavailable))
+      case JObject(fields) =>
+        val allAvailable = fields.forall {
+          case (_, JBool(available)) => available
+          case _ => false
+        }
+        if (!allAvailable) Some(Set(Reason.Unavailable)) else None
+      case _ => None
+    }
   }
 
-  val SuppliableChecker: Checker = doc => rightsChecker(doc \ "supplyRights" \ "WORLD",
-    doc \ "supplyRights" \ "GB", doc \ "supplyRights" \ "ROW", Reason.Unsuppliable)
-
-  val SellableChecker: Checker = doc => rightsChecker(doc \ "salesRights" \ "WORLD",
-    doc \ "salesRights" \ "GB", doc \ "salesRights" \ "ROW", Reason.Unsellable)
-
-  val PublisherChecker: Checker = doc => (doc \ "publisher", doc \ "imprint") match {
-    case (JString(publisher), _) if publisher.nonEmpty => None
-    case (_, JString(imprint)) if imprint.nonEmpty => None
-    case _ => Some(Set(Reason.NoPublisher))
+  val SuppliableChecker = Checker { doc =>
+    rightsChecker(
+      doc \ "supplyRights" \ "WORLD",
+      doc \ "supplyRights" \ "GB",
+      doc \ "supplyRights" \ "ROW",
+      Reason.Unsuppliable)
   }
 
-  val CoverChecker: Checker = doc => {
+  val SellableChecker = Checker { doc =>
+    rightsChecker(
+      doc \ "salesRights" \ "WORLD",
+      doc \ "salesRights" \ "GB",
+      doc \ "salesRights" \ "ROW",
+      Reason.Unsellable)
+  }
+
+  val PublisherChecker = Checker { doc =>
+    (doc \ "publisher", doc \ "imprint") match {
+      case (JString(publisher), _) if publisher.nonEmpty => None
+      case (_, JString(imprint)) if imprint.nonEmpty => None
+      case _ => Some(Set(Reason.NoPublisher))
+    }
+  }
+
+  val CoverChecker = Checker { doc =>
     val frontCover: JValue = ("realm" -> "type") ~ ("id" -> "front_cover")
     doc \ "images" \\ "classification" match {
       case JArray(classification) if classification.contains(frontCover) => None
@@ -165,39 +185,57 @@ object DocumentStatus extends v2.JsonSupport {
     }
   }
 
-  val EpubChecker: Checker = doc => classificationChecker(doc \ "media" \ "epubs" \ "best",
-    doc \ "media" \ "epubs" \ "items" \\ "classification", Reason.NoEpub, (best, fieldsWithBestClassification) => {
-      val containsSample = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("sample"))
-      val containsDrm = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("full_bbbdrm"))
-      containsSample && containsDrm
-    })
-
-  val EnglishChecker: Checker = _ \ "languages" match {
-    case JArray(languages) if languages.contains(JString("eng")) => None
-    case _ => Some(Set(Reason.NotEnglish))
-  }
-
-  val DescriptionChecker: Checker = doc => classificationChecker(doc \ "descriptions" \ "best",
-    doc \ "descriptions" \ "items" \\ "classification", Reason.NoDescription, (_, fieldsWithBestClassification) => {
-      fieldsWithBestClassification.nonEmpty
-    })
-
-  val UsablePriceChecker: Checker = _ \ "prices" \ "includesTax" match {
-    case JBool(includesTax) if !includesTax => None
-    case JObject(fields) =>
-      val usablePriceExists = fields.exists {
-        case ("includesTax", JBool(includesTax)) => !includesTax
-        case _ => false
+  val EpubChecker = Checker { doc =>
+    classificationChecker(
+      doc \ "media" \ "epubs" \ "best",
+      doc \ "media" \ "epubs" \ "items" \\ "classification",
+      Reason.NoEpub,
+      (best, fieldsWithBestClassification) => {
+        val containsSample = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("sample"))
+        val containsDrm = classificationExists(fieldsWithBestClassification, _ \ "id" == JString("full_bbbdrm"))
+        containsSample && containsDrm
       }
-      if (!usablePriceExists) Some(Set(Reason.NoUsablePrice)) else None
-    case _ => Some(Set(Reason.NoUsablePrice))
+    )
   }
 
-  val RacyTitleChecker: Checker = doc => (doc \ "imprint", doc \ "publisher", doc \ "subjects") match {
-    case (JString(imprint), JString(publisher), JArray(subjects)) if
-      hasRestrictedImprint(RestrictedImprints, imprint) ||
-      hasRestrictedPublisher(RestrictedPublishers, publisher) ||
-      hasRestrictedSubject(RestrictedSubjects, subjects) => Some(Set(Reason.Racy))
-    case _ => None
+  val EnglishChecker = Checker { doc =>
+    doc \ "languages" match {
+      case JArray(languages) if languages.contains(JString("eng")) => None
+      case _ => Some(Set(Reason.NotEnglish))
+    }
+  }
+
+  val DescriptionChecker = Checker { doc =>
+    classificationChecker(
+      doc \ "descriptions" \ "best",
+      doc \ "descriptions" \ "items" \\ "classification",
+      Reason.NoDescription,
+      (_, fieldsWithBestClassification) => {
+        fieldsWithBestClassification.nonEmpty
+      }
+    )
+  }
+
+  val UsablePriceChecker = Checker { doc =>
+    doc \ "prices" \ "includesTax" match {
+      case JBool(includesTax) if !includesTax => None
+      case JObject(fields) =>
+        val usablePriceExists = fields.exists {
+          case ("includesTax", JBool(includesTax)) => !includesTax
+          case _ => false
+        }
+        if (!usablePriceExists) Some(Set(Reason.NoUsablePrice)) else None
+      case _ => Some(Set(Reason.NoUsablePrice))
+    }
+  }
+
+  val RacyTitleChecker = Checker { doc =>
+    (doc \ "imprint", doc \ "publisher", doc \ "subjects") match {
+      case (JString(imprint), JString(publisher), JArray(subjects)) if
+        hasRestrictedImprint(RestrictedImprints, imprint) ||
+        hasRestrictedPublisher(RestrictedPublishers, publisher) ||
+        hasRestrictedSubject(RestrictedSubjects, subjects) => Some(Set(Reason.Racy))
+      case _ => None
+    }
   }
 }
