@@ -1,11 +1,11 @@
-package com.blinkbox.books.marvin.magrathea.message
+package com.blinkbox.books.marvin.magrathea.api
 
 import java.net.URL
 import java.util.UUID
 
 import com.blinkbox.books.config.ApiConfig
-import com.blinkbox.books.marvin.magrathea.api.{IndexService, RestApi}
-import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
+import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, Revision}
+import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig, TestHelper}
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._

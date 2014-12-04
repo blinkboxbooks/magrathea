@@ -6,7 +6,7 @@ import akka.actor.{ActorRef, ActorSystem, Props, Status}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
-import com.blinkbox.books.marvin.magrathea.SchemaConfig
+import com.blinkbox.books.marvin.magrathea.{TestHelper, SchemaConfig}
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup

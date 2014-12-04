@@ -1,9 +1,9 @@
-package com.blinkbox.books.marvin.magrathea.message
+package com.blinkbox.books.marvin.magrathea
 
 import java.util.UUID
 
 import com.blinkbox.books.marvin.magrathea.Helpers._
-import com.blinkbox.books.marvin.magrathea.{Current, History}
+import com.blinkbox.books.marvin.magrathea.message.DocumentAnnotator
 import com.blinkbox.books.spray.v2
 import org.joda.time.format.ISODateTimeFormat
 import org.joda.time.{DateTime, DateTimeZone}
@@ -23,7 +23,7 @@ trait TestHelper extends v2.JsonSupport with JsonMethods {
   
   def getRandomIsbn(num: Int = Random.nextInt(1000000)) = s"9780007${"%06d".format(num)}"
 
-  def sampleBook(extraContent: JValue = JNothing, includeId: Boolean = true): JValue = {
+  def sampleBook(extraContent: JValue = JNothing): JValue = {
     ("$schema" -> "ingestion.book.metadata.v2") ~
     ("classification" -> List(
       ("realm" -> "isbn") ~
