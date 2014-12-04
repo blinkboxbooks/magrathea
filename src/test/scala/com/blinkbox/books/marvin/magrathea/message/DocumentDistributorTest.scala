@@ -127,8 +127,8 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
         ("discountRate" -> 0.525) ~
         ("applicableRegions" -> List.empty)
       )
-      val racyField: JValue = if (!racy) JNothing else "subjects" -> List(
-        ("code" -> "REL012010") ~ ("type" -> "BISAC")
+      val racyField: JValue = "subjects" -> List(
+        ("code" -> (if (racy) "FIC027010" else "REL012010")) ~ ("type" -> "BISAC")
       )
       sampleBook(
         ("isbn" -> "9780111222333") ~

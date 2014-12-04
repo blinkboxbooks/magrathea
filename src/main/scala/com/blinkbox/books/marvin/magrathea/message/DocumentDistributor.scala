@@ -56,6 +56,48 @@ object DocumentStatus extends v2.JsonSupport {
 
   type Checker = JValue => Option[List[Reason.Value]]
 
+  private val RestrictedImprints = Set(
+    "Xcite Books",
+    "Total-E-Bound Publishing",
+    "Cleis Press",
+    "House of Erotica",
+    "W&H Publishing",
+    "Cambridge House",
+    "Chimera Books",
+    "AUK Adult",
+    "Bruno Gmunder Digital"
+  )
+
+  private val RestrictedPublishers = Set(
+    "Xcite Books",
+    "Chimera eBooks Ltd"
+  )
+
+  private val RestrictedSubjects = Set(
+    ("BISAC", "FIC027010"),
+    ("BISAC", "FIC005000"),
+    ("BISAC", "PHO023030"),
+    ("BISAC", "PHO023050"),
+    ("BIC", "FP")
+  )
+
+  private def hasItemInSet[T](set: Set[T], item: T): Boolean = set.contains(item)
+
+  private val hasRestrictedImprint: (Set[String], String) => Boolean = hasItemInSet
+
+  private val hasRestrictedPublisher: (Set[String], String) => Boolean = hasItemInSet
+
+  private val subject2Tuple: JValue => (String, String) = {
+    case JObject(fields) => (fields.find(_._1 == "type"), fields.find(_._1 == "code")) match {
+      case (Some((_, JString(typeVal))), Some((_, JString(codeVal)))) => (typeVal, codeVal)
+      case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
+    }
+    case _ => throw new RuntimeException("The book's subjects json format does not match with type / code.")
+  }
+
+  private val hasRestrictedSubject: (Set[(String, String)], List[JValue]) => Boolean = (set, subjects) =>
+    subjects.map(subject2Tuple).exists(hasItemInSet(set, _))
+
   private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[List[Reason.Value]] = {
     case (JBool(world), _, _, reason) if !world => Some(List(reason))
     case (_, JBool(gb), _, reason) if !gb => Some(List(reason))
@@ -151,5 +193,11 @@ object DocumentStatus extends v2.JsonSupport {
     case _ => Some(List(Reason.NoUsablePrice))
   }
 
-  val RacyTitleChecker: Checker = doc => None
+  val RacyTitleChecker: Checker = doc => (doc \ "imprint", doc \ "publisher", doc \ "subjects") match {
+    case (JString(imprint), JString(publisher), JArray(subjects)) if
+      hasRestrictedImprint(RestrictedImprints, imprint) ||
+      hasRestrictedPublisher(RestrictedPublishers, publisher) ||
+      hasRestrictedSubject(RestrictedSubjects, subjects) => Some(List(Reason.Racy))
+    case _ => None
+  }
 }
