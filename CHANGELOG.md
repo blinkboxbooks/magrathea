@@ -1,5 +1,13 @@
 # Change log
 
+## 0.4.0 ([#9](https://git.mobcastdev.com/Marvin/magrathea/pull/9) 2014-12-04 16:52:35)
+
+Distributability
+
+### New feature
+
+* Calculates the distributability of a given document according to the [business rules].(http://jira.blinkbox.local/confluence/pages/viewpage.action?title=Distribution+Business+Logic&spaceKey=QUILL)
+
 ## 0.3.0 ([#8](https://git.mobcastdev.com/Marvin/magrathea/pull/8) 2014-11-28 11:29:30)
 
 Document History
