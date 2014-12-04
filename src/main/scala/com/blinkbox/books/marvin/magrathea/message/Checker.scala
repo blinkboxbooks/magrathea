@@ -50,9 +50,8 @@ object Checker {
     predicate: (JValue, List[JField]) => Boolean): Option[Reason] = {
     (bestClassification, classifications) match {
       case (JArray(best :: Nil), JObject(fields)) =>
-        val classificationFields = fields.filter {
-          case ("classification", JArray(classification)) => classification.contains(best)
-          case _ => false
+        val classificationFields = fields.collect {
+          case c @ ("classification", JArray(classification)) if classification.contains(best) => c
         }
         if (predicate(best, classificationFields)) None else Some(reason)
       case (JArray(best :: Nil), JArray(classification)) =>
