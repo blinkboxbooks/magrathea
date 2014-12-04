@@ -21,7 +21,7 @@ object DocumentDistributor {
     val NoTitle, Unavailable, Unsuppliable, Unsellable, NoPublisher, NoCover,
       NoEpub, NotEnglish, NoDescription, NoUsablePrice, Racy = Value
   }
-  case class Status(sellable: Boolean, reasons: Option[List[Reason]])
+  case class Status(sellable: Boolean, reasons: Option[Set[Reason]])
 }
 
 class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
@@ -30,9 +30,9 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
 
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
   implicit val json4sJacksonFormats = DefaultFormats
-  private val checkers: List[Checker] = TitleChecker :: AvailabilityChecker :: SuppliableChecker ::
-    SellableChecker :: PublisherChecker :: CoverChecker :: EpubChecker :: EnglishChecker ::
-    DescriptionChecker :: UsablePriceChecker :: RacyTitleChecker :: Nil
+  private val checkers: Set[Checker] = Set(TitleChecker, AvailabilityChecker, SuppliableChecker,
+    SellableChecker, PublisherChecker, CoverChecker, EpubChecker, EnglishChecker,
+    DescriptionChecker, UsablePriceChecker, RacyTitleChecker)
 
   /** TODO implement this */
   def sendDistributionInformation(document: JValue): Future[Unit] = Future {
@@ -44,8 +44,8 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
   }
 
   def status(doc: JValue): DocumentDistributor.Status = {
-    val reasons = checkers.foldLeft(List.empty[Reason]) { (acc, check) =>
-      check(doc).fold(acc)(_ ::: acc)
+    val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
+      check(doc).fold(acc)(_ union acc)
     }
     DocumentDistributor.Status(sellable = reasons.isEmpty, if (reasons.nonEmpty) Some(reasons) else None)
   }
@@ -54,7 +54,7 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
 object DocumentStatus extends v2.JsonSupport {
   import org.json4s.JsonDSL._
 
-  type Checker = JValue => Option[List[Reason.Value]]
+  type Checker = JValue => Option[Set[Reason.Value]]
 
   private val RestrictedImprints = Set(
     "Xcite Books",
@@ -98,23 +98,23 @@ object DocumentStatus extends v2.JsonSupport {
   private val hasRestrictedSubject: (Set[(String, String)], List[JValue]) => Boolean = (set, subjects) =>
     subjects.map(subject2Tuple).exists(hasItemInSet(set, _))
 
-  private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[List[Reason.Value]] = {
-    case (JBool(world), _, _, reason) if !world => Some(List(reason))
-    case (_, JBool(gb), _, reason) if !gb => Some(List(reason))
-    case (_, JNothing, JBool(row), reason) if !row => Some(List(reason))
+  private val rightsChecker: (JValue, JValue, JValue, Reason.Value) => Option[Set[Reason.Value]] = {
+    case (JBool(world), _, _, reason) if !world => Some(Set(reason))
+    case (_, JBool(gb), _, reason) if !gb => Some(Set(reason))
+    case (_, JNothing, JBool(row), reason) if !row => Some(Set(reason))
     case _ => None
   }
 
-  private val classificationChecker: (JValue, JValue, Reason.Value, => (JValue, List[JField]) => Boolean) => Option[List[Reason.Value]] = {
+  private val classificationChecker: (JValue, JValue, Reason.Value, => (JValue, List[JField]) => Boolean) => Option[Set[Reason.Value]] = {
     case (JArray(best :: Nil), JObject(fields), reason, check) =>
       val fieldsWithBestClassification = fields.filter {
         case ("classification", JArray(classification)) => classification.contains(best)
         case _ => false
       }
-      if (check(best, fieldsWithBestClassification)) None else Some(List(reason))
+      if (check(best, fieldsWithBestClassification)) None else Some(Set(reason))
     case (JArray(best :: Nil), JArray(classification), reason, check) =>
-      if (classification.contains(best) && check(best, classification.map("classification" -> _))) None else Some(List(reason))
-    case (_, _, reason, _) => Some(List(reason))
+      if (classification.contains(best) && check(best, classification.map("classification" -> _))) None else Some(Set(reason))
+    case (_, _, reason, _) => Some(Set(reason))
   }
 
   private val classificationExists: (List[JField], JValue => Boolean) => Boolean = (fields, exists) =>
@@ -125,17 +125,17 @@ object DocumentStatus extends v2.JsonSupport {
 
   val TitleChecker: Checker = _ \ "title" match {
     case JString(title) if title.nonEmpty => None
-    case _ => Some(List(Reason.NoTitle))
+    case _ => Some(Set(Reason.NoTitle))
   }
 
   val AvailabilityChecker: Checker = _ \\ "available" match {
-    case JBool(available) if !available => Some(List(Reason.Unavailable))
+    case JBool(available) if !available => Some(Set(Reason.Unavailable))
     case JObject(fields) =>
       val allAvailable = fields.forall {
         case (_, JBool(available)) => available
         case _ => false
       }
-      if (!allAvailable) Some(List(Reason.Unavailable)) else None
+      if (!allAvailable) Some(Set(Reason.Unavailable)) else None
     case _ => None
   }
 
@@ -148,7 +148,7 @@ object DocumentStatus extends v2.JsonSupport {
   val PublisherChecker: Checker = doc => (doc \ "publisher", doc \ "imprint") match {
     case (JString(publisher), _) if publisher.nonEmpty => None
     case (_, JString(imprint)) if imprint.nonEmpty => None
-    case _ => Some(List(Reason.NoPublisher))
+    case _ => Some(Set(Reason.NoPublisher))
   }
 
   val CoverChecker: Checker = doc => {
@@ -160,8 +160,8 @@ object DocumentStatus extends v2.JsonSupport {
           case ("classification", JArray(classification)) => classification.contains(frontCover)
           case _ => false
         }
-        if (!hasCover) Some(List(Reason.NoCover)) else None
-      case _ => Some(List(Reason.NoCover))
+        if (!hasCover) Some(Set(Reason.NoCover)) else None
+      case _ => Some(Set(Reason.NoCover))
     }
   }
 
@@ -174,7 +174,7 @@ object DocumentStatus extends v2.JsonSupport {
 
   val EnglishChecker: Checker = _ \ "languages" match {
     case JArray(languages) if languages.contains(JString("eng")) => None
-    case _ => Some(List(Reason.NotEnglish))
+    case _ => Some(Set(Reason.NotEnglish))
   }
 
   val DescriptionChecker: Checker = doc => classificationChecker(doc \ "descriptions" \ "best",
@@ -189,15 +189,15 @@ object DocumentStatus extends v2.JsonSupport {
         case ("includesTax", JBool(includesTax)) => !includesTax
         case _ => false
       }
-      if (!usablePriceExists) Some(List(Reason.NoUsablePrice)) else None
-    case _ => Some(List(Reason.NoUsablePrice))
+      if (!usablePriceExists) Some(Set(Reason.NoUsablePrice)) else None
+    case _ => Some(Set(Reason.NoUsablePrice))
   }
 
   val RacyTitleChecker: Checker = doc => (doc \ "imprint", doc \ "publisher", doc \ "subjects") match {
     case (JString(imprint), JString(publisher), JArray(subjects)) if
       hasRestrictedImprint(RestrictedImprints, imprint) ||
       hasRestrictedPublisher(RestrictedPublishers, publisher) ||
-      hasRestrictedSubject(RestrictedSubjects, subjects) => Some(List(Reason.Racy))
+      hasRestrictedSubject(RestrictedSubjects, subjects) => Some(Set(Reason.Racy))
     case _ => None
   }
 }

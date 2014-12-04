@@ -172,7 +172,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
 
     def shouldNotBeSellableWith(status: Status, reason: Reason.Value*): Unit = {
       status.sellable shouldEqual false
-      status.reasons shouldEqual Some(reason)
+      status.reasons shouldEqual Some(reason.toSet)
     }
   }
 }
