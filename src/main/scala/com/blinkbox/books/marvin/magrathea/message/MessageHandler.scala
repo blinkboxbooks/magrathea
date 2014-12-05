@@ -7,6 +7,7 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.api.IndexService
+import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Status
 import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.StrictLogging
@@ -77,7 +78,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     history <- documentDao.getDocumentHistory(document)
     mergedDoc = mergeHistoryDocuments(history)
     (insertId, deletedIds) <- documentDao.storeCurrentDocument(mergedDoc, deleteOld)
-    _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
+    _ <- sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
 
   private def handleContributors(document: JValue): Future[Unit] =
@@ -90,6 +91,16 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
         }).map(_ => ())
       case _ => Future.successful(())
     }
+
+  private def sendDistributionInformation(document: JValue): Future[Unit] = {
+    val deAnnotated = DocumentAnnotator.deAnnotate(document)
+    deAnnotated \ "$schema" match {
+      case JString(schema) if schema == schemas.contributor =>
+        distributor.sendDistributionInformation(deAnnotated merge Status(sellable = true, Set.empty).toJson)
+      case _ =>
+        distributor.sendDistributionInformation(deAnnotated merge distributor.status(deAnnotated).toJson)
+    }
+  }
 
   private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
     val indexed = indexService.indexCurrentDocument(insertId, document).map(_ => ())

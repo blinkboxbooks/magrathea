@@ -19,7 +19,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
   it should "distribute a book which respects distribution business logic" in new TestFixture {
     val status = distributor.status(distBook())
     status.sellable shouldEqual true
-    status.reasons shouldEqual None
+    status.reasons shouldEqual Set.empty
   }
 
   it should "not distribute a book without a title" in new TestFixture {
@@ -173,7 +173,7 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
 
     def shouldNotBeSellableWith(status: Status, reason: Reason*): Unit = {
       status.sellable shouldEqual false
-      status.reasons shouldEqual Some(reason.toSet)
+      status.reasons shouldEqual reason.toSet
     }
   }
 }

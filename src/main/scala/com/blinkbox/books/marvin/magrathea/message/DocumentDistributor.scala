@@ -5,6 +5,7 @@ import java.util.concurrent.Executors
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message.Checker._
+import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Status
 import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig}
 import com.blinkbox.books.spray.v2
 import com.typesafe.scalalogging.StrictLogging
@@ -16,7 +17,13 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 object DocumentDistributor {
-  case class Status(sellable: Boolean, reasons: Option[Set[Reason]])
+  case class Status(sellable: Boolean, reasons: Set[Reason]) {
+    val toJson: JValue = "distributionStatus" -> (
+      ("sellable" -> sellable) ~ ("reasons" -> reasons.map { r =>
+        r.getClass.getName.split("\\$").last
+      })
+    )
+  }
 }
 
 class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
@@ -38,11 +45,11 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
     }
   }
 
-  def status(doc: JValue): DocumentDistributor.Status = {
+  def status(document: JValue): Status = {
     val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
-      check(doc).fold(acc)(acc + _)
+      check(document).fold(acc)(acc + _)
     }
-    DocumentDistributor.Status(sellable = reasons.isEmpty, if (reasons.nonEmpty) Some(reasons) else None)
+    Status(sellable = reasons.isEmpty, reasons)
   }
 }
 
