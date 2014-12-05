@@ -22,8 +22,8 @@ import scala.concurrent.{ExecutionContext, Future}
 object DocumentDistributor {
   case class Status(usable: Boolean, reasons: Set[Reason]) {
     val toJson: JValue = "distributionStatus" -> (
-      ("usable" -> usable) ~ ("reasons" -> reasons.map { r =>
-        r.getClass.getName.split("\\$").last
+      ("usable" -> usable) ~ ("reasons" -> reasons.map { reason =>
+        reason.getClass.getName.split("\\$").last
       })
     )
   }
