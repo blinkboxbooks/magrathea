@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.0 ([#10](https://git.mobcastdev.com/Marvin/magrathea/pull/10) 2014-12-05 13:58:18)
+
+Deliver distributability
+
+### New Feature
+
+- Sending distribution information message
+
 ## 0.4.0 ([#9](https://git.mobcastdev.com/Marvin/magrathea/pull/9) 2014-12-04 16:52:35)
 
 Distributability
