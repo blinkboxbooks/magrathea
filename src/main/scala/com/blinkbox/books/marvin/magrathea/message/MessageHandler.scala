@@ -94,12 +94,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
 
   private def sendDistributionInformation(document: JValue): Future[Unit] = {
     val deAnnotated = DocumentAnnotator.deAnnotate(document)
-    deAnnotated \ "$schema" match {
-      case JString(schema) if schema == schemas.contributor =>
-        distributor.sendDistributionInformation(deAnnotated merge Status(usable = true, Set.empty).toJson)
-      case _ =>
-        distributor.sendDistributionInformation(deAnnotated merge distributor.status(deAnnotated).toJson)
-    }
+    distributor.sendDistributionInformation(deAnnotated merge distributor.status(deAnnotated).toJson)
   }
 
   private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
