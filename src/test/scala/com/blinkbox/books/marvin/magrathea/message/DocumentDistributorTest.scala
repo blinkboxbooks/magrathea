@@ -1,18 +1,25 @@
 package com.blinkbox.books.marvin.magrathea.message
 
+import java.nio.charset.Charset
+
+import akka.actor.ActorSystem
+import akka.testkit.{TestKit, TestProbe}
 import com.blinkbox.books.marvin.magrathea.message.Checker._
 import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor._
-import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig, TestHelper}
+import com.blinkbox.books.marvin.magrathea.{SchemaConfig, TestHelper}
+import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.junit.runner.RunWith
 import org.mockito.Mockito._
+import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpecLike, Matchers}
 
 @RunWith(classOf[JUnitRunner])
-class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matchers with TestHelper {
+class DocumentDistributorTest extends TestKit(ActorSystem("test-system")) with FlatSpecLike with MockitoSyrup
+  with Matchers with TestHelper with ScalaFutures {
 
   behavior of "The document distributor"
 
@@ -82,13 +89,73 @@ class DocumentDistributorTest extends FlatSpecLike with MockitoSyrup with Matche
     shouldNotBeSellableWith(status, NoDescription, NoEpub, NoTitle)
   }
 
+  it should "always send the distribution information if a book is distributable" in new TestFixture {
+    val distributableBook = distBook()
+    val status = distributor.status(distributableBook)
+    val expectedJson = compact(render(distributableBook merge status.toJson)).getBytes
+    distributor.sendDistributionInformation(distributableBook)
+    publisher.expectMsgPF() {
+      case Event(_, EventBody(json, ContentType(MediaType(mainType, subType), Some(charset)))) =>
+        json == expectedJson &&
+        mainType == "application" &&
+        subType == s"vnd.blinkbox.books.${schemas.book}" &&
+        charset == Charset.forName("UTF-8")
+    }
+  }
+
+  it should "always send the distribution information if a book is non-distributable" in new TestFixture {
+    val nonDistributableBook = distBook(noTitle = true)
+    val status = distributor.status(nonDistributableBook)
+    val expectedJson = compact(render(nonDistributableBook merge status.toJson)).getBytes
+    distributor.sendDistributionInformation(nonDistributableBook)
+    publisher.expectMsgPF() {
+      case Event(_, EventBody(json, ContentType(MediaType(mainType, subType), Some(charset)))) =>
+        json == expectedJson &&
+        mainType == "application" &&
+        subType == s"vnd.blinkbox.books.${schemas.book}" &&
+        charset == Charset.forName("UTF-8")
+    }
+  }
+
+  it should "always distribute all contributors" in new TestFixture {
+    val contributor = sampleContributor()
+    val status = distributor.status(contributor)
+    status.sellable shouldEqual true
+    status.reasons shouldEqual Set.empty
+    val expectedJson = compact(render(contributor merge status.toJson)).getBytes
+    distributor.sendDistributionInformation(contributor)
+    publisher.expectMsgPF() {
+      case Event(_, EventBody(json, ContentType(MediaType(mainType, subType), Some(charset)))) =>
+        json == expectedJson &&
+        mainType == "application" &&
+        subType == s"vnd.blinkbox.books.${schemas.contributor}" &&
+        charset == Charset.forName("UTF-8")
+    }
+  }
+
+  it should "fail to send distribution information if the schema is not supported" in new TestFixture {
+    val dummyJson = ("$schema" -> "dummy") ~ ("value" -> false)
+    whenReady(distributor.sendDistributionInformation(dummyJson).failed) { res =>
+      res.isInstanceOf[IllegalArgumentException] shouldEqual true
+      res.getMessage shouldEqual "Cannot send distribution information from unsupported schema: dummy"
+    }
+  }
+
+  it should "fail to send distribution information if the schema is not there" in new TestFixture {
+    val dummyJson = ("test" -> "dummy") ~ ("value" -> false)
+    whenReady(distributor.sendDistributionInformation(dummyJson).failed) { res =>
+      res.isInstanceOf[IllegalArgumentException] shouldEqual true
+      res.getMessage shouldEqual "Cannot send distribution information: document schema is missing."
+    }
+  }
+
   trait TestFixture extends TestHelper {
-    val config = mock[DistributorConfig]
+    val publisher = TestProbe()
     val schemas = mock[SchemaConfig]
     doReturn("ingestion.book.metadata.v2").when(schemas).book
     doReturn("ingestion.contributor.metadata.v2").when(schemas).contributor
 
-    val distributor = new DocumentDistributor(config, schemas)
+    val distributor = new DocumentDistributor(publisher.ref, schemas)
 
     def distBook(noTitle: Boolean = false, unavailable: Boolean = false, unsuppliable: Boolean = false,
       unsellable: Boolean = false, noPublisher: Boolean = false, noCover: Boolean = false,
