@@ -6,8 +6,8 @@ import akka.actor.{ActorRef, ActorSystem, Props, Status}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
-import com.blinkbox.books.marvin.magrathea.{TestHelper, SchemaConfig}
 import com.blinkbox.books.marvin.magrathea.api.IndexService
+import com.blinkbox.books.marvin.magrathea.{SchemaConfig, TestHelper}
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
 import org.elasticsearch.action.bulk.BulkResponse
@@ -202,6 +202,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     val distributor = mock[DocumentDistributor]
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
+    doReturn(DocumentDistributor.Status(usable = true, Set.empty)).when(distributor).status(any[JValue])
 
     val indexService = mock[IndexService]
     val bulkResponse = mock[BulkResponse]

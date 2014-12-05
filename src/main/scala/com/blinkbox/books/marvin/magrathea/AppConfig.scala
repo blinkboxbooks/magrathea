@@ -16,7 +16,7 @@ case class AppConfig(api: ApiConfig, listener: ListenerConfig,
 case class ListenerConfig(rabbitmq: RabbitMqConfig, retryInterval: FiniteDuration, actorTimeout: FiniteDuration,
   distributor: DistributorConfig, input: QueueConfiguration, error: PublisherConfiguration)
 case class SchemaConfig(book: String, contributor: String)
-case class DistributorConfig(bookOutput: PublisherConfiguration, contributorOutput: PublisherConfiguration)
+case class DistributorConfig(output: PublisherConfiguration)
 case class ElasticConfig(url: URL, index: String, reIndexChunks: Int) {
   val host = url.getHost
   val port = url.getPort
@@ -47,8 +47,7 @@ object ListenerConfig {
 
 object DistributorConfig {
   def apply(config: Config, prefix: String) = new DistributorConfig(
-    PublisherConfiguration(config.getConfig(s"$prefix.book.output")),
-    PublisherConfiguration(config.getConfig(s"$prefix.contributor.output"))
+    PublisherConfiguration(config.getConfig(s"$prefix.output"))
   )
 }
 

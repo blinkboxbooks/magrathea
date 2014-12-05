@@ -1,11 +1,15 @@
 package com.blinkbox.books.marvin.magrathea.message
 
+import java.nio.charset.Charset
 import java.util.concurrent.Executors
 
+import akka.actor.ActorRef
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
+import com.blinkbox.books.marvin.magrathea.SchemaConfig
 import com.blinkbox.books.marvin.magrathea.message.Checker._
-import com.blinkbox.books.marvin.magrathea.{DistributorConfig, SchemaConfig}
+import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Status
+import com.blinkbox.books.messaging._
 import com.blinkbox.books.spray.v2
 import com.typesafe.scalalogging.StrictLogging
 import org.json4s.JsonAST._
@@ -16,10 +20,16 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 object DocumentDistributor {
-  case class Status(sellable: Boolean, reasons: Option[Set[Reason]])
+  case class Status(usable: Boolean, reasons: Set[Reason]) {
+    val toJson: JValue = "distributionStatus" -> (
+      ("usable" -> usable) ~ ("reasons" -> reasons.map { reason =>
+        reason.getClass.getName.split("\\$").last
+      })
+    )
+  }
 }
 
-class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
+class DocumentDistributor(publisher: ActorRef, schemas: SchemaConfig)
   extends Json4sJacksonSupport with JsonMethods with StrictLogging {
   import com.blinkbox.books.marvin.magrathea.message.DocumentStatus._
 
@@ -29,21 +39,32 @@ class DocumentDistributor(config: DistributorConfig, schemas: SchemaConfig)
     SellableChecker, PublisherChecker, CoverChecker, EpubChecker, EnglishChecker,
     DescriptionChecker, UsablePriceChecker, RacyTitleChecker)
 
-  /** TODO implement this */
   def sendDistributionInformation(document: JValue): Future[Unit] = Future {
     document \ "$schema" match {
-      case JString(schema) if schema == schemas.book => ()
-      case JString(schema) if schema == schemas.contributor => ()
-      case x => throw new IllegalArgumentException(s"Cannot get distribution information from unsupported schema: $x")
+      case JString(schema) if schema == schemas.book || schema == schemas.contributor =>
+        val json = compact(render(document))
+        val contentType = ContentType(mediaTypeFor(schema), Some(Charset.forName("UTF-8")))
+        publisher ! Event(EventHeader("magrathea"), EventBody(json.getBytes, contentType))
+      case JString(x) => throw new IllegalArgumentException(s"Cannot send distribution information from unsupported schema: $x")
+      case _ => throw new IllegalArgumentException("Cannot send distribution information: document schema is missing.")
     }
   }
 
-  def status(doc: JValue): DocumentDistributor.Status = {
-    val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
-      check(doc).fold(acc)(acc + _)
+  private def mediaTypeFor(schema: String): MediaType = MediaType(
+    if (schema == schemas.book) s"application/vnd.blinkbox.books.$schema"
+    else if (schema == schemas.contributor) s"application/vnd.blinkbox.contributor.$schema"
+    else ""
+  )
+
+  def status(document: JValue): Status =
+    document \ "$schema" match {
+      case JString(schema) if schema == schemas.book =>
+        val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
+          check(document).fold(acc)(acc + _)
+        }
+        Status(usable = reasons.isEmpty, reasons)
+      case _ => Status(usable = true, Set.empty)
     }
-    DocumentDistributor.Status(sellable = reasons.isEmpty, if (reasons.nonEmpty) Some(reasons) else None)
-  }
 }
 
 object DocumentStatus extends v2.JsonSupport {

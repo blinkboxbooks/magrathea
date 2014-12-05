@@ -7,6 +7,7 @@ import akka.util.Timeout
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.api.IndexService
+import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Status
 import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig}
 import com.blinkbox.books.messaging.{ErrorHandler, Event, ReliableEventHandler}
 import com.typesafe.scalalogging.StrictLogging
@@ -54,7 +55,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     parse(json)
   }
 
-  private def normaliseContributors(doc: JValue): JValue = {
+  private def normaliseContributors(doc: JValue): JValue =
     (doc \ "$schema", doc \ "contributors") match {
       case (JString(schema), JArray(arr)) if schema == schemas.book =>
         val newArr: JValue = arr.map { contributor =>
@@ -71,24 +72,29 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
         doc.overwriteDirectField("contributors", newArr)
       case _ => doc
     }
-  }
 
   private def handleDocument(document: JValue, deleteOld: Boolean = true): Future[Unit] = for {
     (insertId, deletedIds) <- documentDao.storeHistoryDocument(document, deleteOld)
     history <- documentDao.getDocumentHistory(document)
     mergedDoc = mergeHistoryDocuments(history)
     (insertId, deletedIds) <- documentDao.storeCurrentDocument(mergedDoc, deleteOld)
-    _ <- distributor.sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
+    _ <- sendDistributionInformation(mergedDoc) zip indexify(mergedDoc, insertId, deletedIds)
   } yield ()
 
-  private def handleContributors(document: JValue): Future[Unit] = document \ "contributors" match {
-    case JArray(arr) =>
-      logger.info("Merging contributors")
-      val source = document \ "source"
-      Future.sequence(arr.map { contributor =>
-        handleDocument(contribufy(contributor, source), deleteOld = false)
-      }).map(_ => ())
-    case _ => Future.successful(())
+  private def handleContributors(document: JValue): Future[Unit] =
+    document \ "contributors" match {
+      case JArray(arr) =>
+        logger.info("Merging contributors")
+        val source = document \ "source"
+        Future.sequence(arr.map { contributor =>
+          handleDocument(contribufy(contributor, source), deleteOld = false)
+        }).map(_ => ())
+      case _ => Future.successful(())
+    }
+
+  private def sendDistributionInformation(document: JValue): Future[Unit] = {
+    val deAnnotated = DocumentAnnotator.deAnnotate(document)
+    distributor.sendDistributionInformation(deAnnotated merge distributor.status(deAnnotated).toJson)
   }
 
   private def indexify(document: JValue, insertId: UUID, deletedIds: List[UUID]): Future[Unit] = {
