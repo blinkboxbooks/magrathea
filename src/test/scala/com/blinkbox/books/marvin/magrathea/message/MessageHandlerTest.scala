@@ -202,7 +202,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     val distributor = mock[DocumentDistributor]
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
-    doReturn(DocumentDistributor.Status(sellable = true, Set.empty)).when(distributor).status(any[JValue])
+    doReturn(DocumentDistributor.Status(usable = true, Set.empty)).when(distributor).status(any[JValue])
 
     val indexService = mock[IndexService]
     val bulkResponse = mock[BulkResponse]

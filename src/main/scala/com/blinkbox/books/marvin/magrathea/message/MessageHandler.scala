@@ -96,7 +96,7 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
     val deAnnotated = DocumentAnnotator.deAnnotate(document)
     deAnnotated \ "$schema" match {
       case JString(schema) if schema == schemas.contributor =>
-        distributor.sendDistributionInformation(deAnnotated merge Status(sellable = true, Set.empty).toJson)
+        distributor.sendDistributionInformation(deAnnotated merge Status(usable = true, Set.empty).toJson)
       case _ =>
         distributor.sendDistributionInformation(deAnnotated merge distributor.status(deAnnotated).toJson)
     }

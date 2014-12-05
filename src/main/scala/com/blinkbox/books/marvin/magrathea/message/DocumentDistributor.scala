@@ -20,9 +20,9 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 
 object DocumentDistributor {
-  case class Status(sellable: Boolean, reasons: Set[Reason]) {
+  case class Status(usable: Boolean, reasons: Set[Reason]) {
     val toJson: JValue = "distributionStatus" -> (
-      ("sellable" -> sellable) ~ ("reasons" -> reasons.map { r =>
+      ("usable" -> usable) ~ ("reasons" -> reasons.map { r =>
         r.getClass.getName.split("\\$").last
       })
     )
@@ -62,8 +62,8 @@ class DocumentDistributor(publisher: ActorRef, schemas: SchemaConfig)
         val reasons = checkers.foldLeft(Set.empty[Reason]) { (acc, check) =>
           check(document).fold(acc)(acc + _)
         }
-        Status(sellable = reasons.isEmpty, reasons)
-      case _ => Status(sellable = true, Set.empty)
+        Status(usable = reasons.isEmpty, reasons)
+      case _ => Status(usable = true, Set.empty)
     }
 }
 

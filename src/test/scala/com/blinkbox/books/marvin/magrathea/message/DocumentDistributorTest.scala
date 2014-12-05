@@ -25,68 +25,68 @@ class DocumentDistributorTest extends TestKit(ActorSystem("test-system")) with F
 
   it should "distribute a book which respects distribution business logic" in new TestFixture {
     val status = distributor.status(distBook())
-    status.sellable shouldEqual true
+    status.usable shouldEqual true
     status.reasons shouldEqual Set.empty
   }
 
   it should "not distribute a book without a title" in new TestFixture {
     val status = distributor.status(distBook(noTitle = true))
-    shouldNotBeSellableWith(status, NoTitle)
+    shouldNotBeUsableWith(status, NoTitle)
   }
 
   it should "not distribute a book marked as unavailable by publisher" in new TestFixture {
     val status = distributor.status(distBook(unavailable = true))
-    shouldNotBeSellableWith(status, Unavailable)
+    shouldNotBeUsableWith(status, Unavailable)
   }
 
   it should "not distribute a book without supply rights" in new TestFixture {
     val status = distributor.status(distBook(unsuppliable = true))
-    shouldNotBeSellableWith(status, Unsuppliable)
+    shouldNotBeUsableWith(status, Unsuppliable)
   }
 
   it should "not distribute a book without sales rights" in new TestFixture {
     val status = distributor.status(distBook(unsellable = true))
-    shouldNotBeSellableWith(status, Unsellable)
+    shouldNotBeUsableWith(status, Unsellable)
   }
 
   it should "not distribute a book without a publisher" in new TestFixture {
     val status = distributor.status(distBook(noPublisher = true))
-    shouldNotBeSellableWith(status, NoPublisher)
+    shouldNotBeUsableWith(status, NoPublisher)
   }
 
   it should "not distribute a book without a cover" in new TestFixture {
     val status = distributor.status(distBook(noCover = true))
-    shouldNotBeSellableWith(status, NoCover)
+    shouldNotBeUsableWith(status, NoCover)
   }
 
   it should "not distribute a book without an epub" in new TestFixture {
     val status = distributor.status(distBook(noEpub = true))
-    shouldNotBeSellableWith(status, NoEpub)
+    shouldNotBeUsableWith(status, NoEpub)
   }
 
   it should "not distribute a book without english in languages" in new TestFixture {
     val status = distributor.status(distBook(notEnglish = true))
-    shouldNotBeSellableWith(status, NotEnglish)
+    shouldNotBeUsableWith(status, NotEnglish)
   }
 
   it should "not distribute a book without a description" in new TestFixture {
     val status = distributor.status(distBook(noDescription = true))
-    shouldNotBeSellableWith(status, NoDescription)
+    shouldNotBeUsableWith(status, NoDescription)
   }
 
   it should "not distribute a book without a usable price" in new TestFixture {
     val status = distributor.status(distBook(noUsablePrice = true))
-    shouldNotBeSellableWith(status, NoUsablePrice)
+    shouldNotBeUsableWith(status, NoUsablePrice)
   }
 
   it should "not distribute a book with racy titles" in new TestFixture {
     val status = distributor.status(distBook(racy = true))
-    shouldNotBeSellableWith(status, Racy)
+    shouldNotBeUsableWith(status, Racy)
   }
 
   it should "not distribute a book without title, ePub and description" in new TestFixture {
     val status = distributor.status(distBook(noTitle = true, noEpub = true, noDescription = true))
-    shouldNotBeSellableWith(status, NoDescription, NoEpub, NoTitle)
+    shouldNotBeUsableWith(status, NoDescription, NoEpub, NoTitle)
   }
 
   it should "always send the distribution information if a book is distributable" in new TestFixture {
@@ -120,7 +120,7 @@ class DocumentDistributorTest extends TestKit(ActorSystem("test-system")) with F
   it should "always distribute all contributors" in new TestFixture {
     val contributor = sampleContributor()
     val status = distributor.status(contributor)
-    status.sellable shouldEqual true
+    status.usable shouldEqual true
     status.reasons shouldEqual Set.empty
     val expectedJson = compact(render(contributor merge status.toJson)).getBytes
     distributor.sendDistributionInformation(contributor)
@@ -238,8 +238,8 @@ class DocumentDistributorTest extends TestKit(ActorSystem("test-system")) with F
       )
     }
 
-    def shouldNotBeSellableWith(status: Status, reason: Reason*): Unit = {
-      status.sellable shouldEqual false
+    def shouldNotBeUsableWith(status: Status, reason: Reason*): Unit = {
+      status.usable shouldEqual false
       status.reasons shouldEqual reason.toSet
     }
   }
