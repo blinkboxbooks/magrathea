@@ -4,3 +4,11 @@ book:
     title: "Two Heads are Better Than One"
   invalid:
     id: "Totallynotaguid"
+
+contributor:
+  existing:
+    id: "682b83a8-01a8-4e5a-bbf3-6c4f303a0058"
+    names:
+      display: "Zaphod Beeblebrox"
+  invalid:
+    id: "Totallynotaguid"
