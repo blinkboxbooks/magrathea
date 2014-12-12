@@ -1,4 +1,4 @@
-Given(/^IMS has information about an? (.+) book$/) do |condition|
+Given(/^(?:\w+) ha(?:s|ve) information about an? (.+) book$/) do |condition|
   @book = data_for_a(:book, which: condition)
 end
 
