@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.2 ([#13](https://git.mobcastdev.com/Marvin/magrathea/pull/13) 2014-12-16 16:36:15)
+
+Health endpoint tests
+
+Patch
+
+ * Cukes for testing the health endpoints are exposed as intended
+
 ## 0.5.1 ([#11](https://git.mobcastdev.com/Marvin/magrathea/pull/11) 2014-12-16 16:27:01)
 
 Api automation
