@@ -6,8 +6,7 @@ require "cucumber/rest"
 TEST_CONFIG = {}
 TEST_CONFIG["server"] = ENV["SERVER"] || "DEV_INT"
 TEST_CONFIG["proxy"] = ENV["PROXY_SERVER"]
-TEST_CONFIG["debug"] = !!(ENV["DEBUG"] =~ /^on|true$/i)
-TEST_CONFIG["fail_fast"] = !!(ENV["FAIL_FAST"] =~ /^on|true$/i)
+TEST_CONFIG["debug"] = (ENV["DEBUG"] =~ /^on|true$/i) ? true : false
 
 puts "TEST_CONFIG: #{TEST_CONFIG}" if TEST_CONFIG["debug"]
 
