@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.1 ([#11](https://git.mobcastdev.com/Marvin/magrathea/pull/11) 2014-12-16 16:27:01)
+
+Api automation
+
+### Improvement
+
+* This adds the most basic level of API functional tests
+
 ## 0.5.0 ([#10](https://git.mobcastdev.com/Marvin/magrathea/pull/10) 2014-12-05 13:58:18)
 
 Deliver distributability
