@@ -19,6 +19,15 @@ paths:
         200:
           description: The details of the book.
           schema: schemas/ingestion/book/metadata/v2.schema.json
+        400:
+          description: The ID provided is not a valid GUID.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "InvalidUUID",
+                "message": "The requested id is not a valid UUID."
+              }
         404:
           description: This ID does not have an associated book.
           schema: ErrorStructure
@@ -42,6 +51,15 @@ paths:
       responses:
         200:
           description: The book has been re-indexed.
+        400:
+          description: The ID provided is not a valid GUID.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "InvalidUUID",
+                "message": "The requested id is not a valid UUID."
+              }
         404:
           description: This ID does not have an associated book.
           schema: ErrorStructure
@@ -66,6 +84,15 @@ paths:
         200:
           description: The details of the book.
           schema: schemas/ingestion/contributor/metadata/v2.schema.json
+        400:
+          description: The ID provided is not a valid GUID.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "InvalidUUID",
+                "message": "The requested id is not a valid UUID."
+              }
         404:
           description: This ID does not have an associated contributor.
           schema: ErrorStructure
@@ -89,6 +116,15 @@ paths:
       responses:
         200:
           description: The contributor has been re-indexed.
+        400:
+          description: The ID provided is not a valid GUID.
+          schema: ErrorStructure
+          examples:
+            application/vnd.blinkbox.books.v2+json: |
+              {
+                "code": "InvalidUUID",
+                "message": "The requested id is not a valid UUID."
+              }
         404:
           description: This ID does not have an associated contributor.
           schema: ErrorStructure

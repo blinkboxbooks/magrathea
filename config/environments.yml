@@ -1,0 +1,8 @@
+# This file details the various servers in each environment which tests for this service require.
+local:
+  servers:
+    api: http://localhost:7008/
+
+dev_int:
+  servers:
+    api: https://api.dev.bbbtest2.com/
