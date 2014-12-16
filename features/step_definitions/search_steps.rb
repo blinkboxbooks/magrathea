@@ -18,6 +18,10 @@ When(/^I search for "([^"]*)" with a (\w+) of "([^"]*)"$/) do |term, filter, val
   search_for_term(query: term, filter: { filter => value })
 end
 
+When(/^I request that the (\w+) document database be re-indexed$/) do |doc_type|
+  send("reindex_#{doc_type}_documents".to_sym)
+end
+
 Then(/^the book is included in the search results$/) do
   matched_results = @response_data['items'].any? { |i| i['title'] == @book['title'] }
   expect(matched_results).to be_truthy

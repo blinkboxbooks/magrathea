@@ -71,3 +71,12 @@ Scenario Outline: Searching with an invalid offset limit parameter
     | -1          | Offset must be greater than 0 |
     |             | Blank string                  |
     | string      | A non-numeric value           |
+
+Scenario Outline: Manually requesting that search indexes be re-indexed
+  When I request that the <type> document database be re-indexed
+  Then the request is successfully accepted
+
+  Examples:
+    | type    |
+    | current |
+    | history |

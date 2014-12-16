@@ -5,6 +5,16 @@ module KnowsAboutSearchApi
     http_get :api, search_url, "Accept" => "application/vnd.blinkbox.books.v2+json"
     @response_data = parse_last_api_response
   end
+
+  def reindex_current_documents
+    http_put :api, "search/reindex/current", nil, "Accept" => "application/vnd.blinkbox.books.v2+json"
+    @response_data = parse_last_api_response
+  end
+
+  def reindex_history_documents
+    http_put :api, "search/reindex/history", nil, "Accept" => "application/vnd.blinkbox.books.v2+json"
+    @response_data = parse_last_api_response
+  end
 end
 
 World(KnowsAboutSearchApi)
