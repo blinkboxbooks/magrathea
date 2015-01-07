@@ -1,6 +1,6 @@
 lazy val root = (project in file(".")).
   settings(
-    name := "magrathea",
+    name := "ingestion-metadata-service",
     organization := "com.blinkbox.books.marvin",
     version := scala.util.Try(scala.io.Source.fromFile("VERSION").mkString.trim).getOrElse("0.0.0"),
     scalaVersion := "2.11.4",
