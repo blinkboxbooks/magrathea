@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.3 ([#14](https://git.mobcastdev.com/Marvin/magrathea/pull/14) 2015-01-07 15:26:58)
+
+New name for magrathea
+
+### Improvement
+
+- Renamed magrathea to ingestion-metadata-service
+
 ## 0.5.2 ([#13](https://git.mobcastdev.com/Marvin/magrathea/pull/13) 2014-12-16 16:36:15)
 
 Health endpoint tests
