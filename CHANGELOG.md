@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.6 ([#17](https://git.mobcastdev.com/Marvin/magrathea/pull/17) 2015-01-12 14:46:52)
+
+Correct the threads health check test
+
+Patch
+
+Add the health endpoint for testing devint, and correct thread -> threads
+
 ## 0.5.5 ([#16](https://git.mobcastdev.com/Marvin/magrathea/pull/16) 2015-01-12 14:30:49)
 
 Re-indexing & Tests
