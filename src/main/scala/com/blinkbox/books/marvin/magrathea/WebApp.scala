@@ -7,7 +7,7 @@ import com.blinkbox.books.logging.{DiagnosticExecutionContext, Loggers}
 import com.blinkbox.books.marvin.magrathea.api.{DefaultIndexService, WebService}
 import com.blinkbox.books.marvin.magrathea.message.{MessageListener, PostgresDocumentDao}
 import com.blinkbox.books.spray._
-import com.sksamuel.elastic4s.ElasticClient
+import com.sksamuel.elastic4s.{ElasticClient, ElasticsearchClientUri}
 import com.typesafe.scalalogging.StrictLogging
 import org.elasticsearch.common.settings.ImmutableSettings
 import spray.can.Http
@@ -17,7 +17,8 @@ object WebApp extends App with Configuration with Loggers with StrictLogging {
     val appConfig = AppConfig(config)
 
     val elasticSettings = ImmutableSettings.settingsBuilder().put("cluster.name", appConfig.elasticsearch.cluster).build()
-    val elasticClient = ElasticClient.remote(elasticSettings, (appConfig.elasticsearch.host, appConfig.elasticsearch.port))
+    val uri = ElasticsearchClientUri(s"elasticsearch://${appConfig.elasticsearch.host}:${appConfig.elasticsearch.port}")
+    val elasticClient = ElasticClient.remote(elasticSettings, uri)
 
     val apiSystem = ActorSystem("magrathea-api-system", config)
     val apiExCtx = DiagnosticExecutionContext(apiSystem.dispatcher)
