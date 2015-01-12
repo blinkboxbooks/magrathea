@@ -1,5 +1,14 @@
 # Change log
 
+## 0.5.5 ([#16](https://git.mobcastdev.com/Marvin/magrathea/pull/16) 2015-01-12 14:30:49)
+
+Re-indexing & Tests
+
+### Improvements
+
+- Removing previous indexes when re-indexing
+- Fixed tests
+
 ## 0.5.4 ([#15](https://git.mobcastdev.com/Marvin/magrathea/pull/15) 2015-01-12 13:16:51)
 
 ElasticHttp & Health Checks
