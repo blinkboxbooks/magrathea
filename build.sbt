@@ -14,8 +14,8 @@ lazy val root = (project in file(".")).
         "com.blinkbox.books"        %% "common-scala-test" % "0.3.0"   % Test,
         "com.blinkbox.books"        %% "common-spray"      % "0.24.0",
         "com.blinkbox.books"        %% "common-spray-auth" % "0.7.6",
+        "com.blinkbox.books"        %% "elastic-http"      % "0.0.11",
         "com.blinkbox.books.hermes" %% "rabbitmq-ha"       % "8.1.1",
-        "com.sksamuel.elastic4s"    %% "elastic4s"         % "1.4.7",
         "org.postgresql"            %  "postgresql"        % "9.3-1102-jdbc41",
         "com.github.tminglei"       %% "slick-pg"          % "0.7.0"
       )

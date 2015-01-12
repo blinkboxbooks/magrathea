@@ -20,7 +20,6 @@ case class DistributorConfig(output: PublisherConfiguration)
 case class ElasticConfig(url: URL, index: String, reIndexChunks: Int) {
   val host = url.getHost
   val port = url.getPort
-  val cluster = url.getPath.drop(1) // drop the initial slash
 }
 
 object AppConfig {
