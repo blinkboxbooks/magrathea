@@ -13,6 +13,7 @@ import com.sksamuel.elastic4s.ElasticClient
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.source.DocumentSource
 import com.typesafe.scalalogging.StrictLogging
+import org.json4s.JsonDSL._
 import org.elasticsearch.action.bulk.BulkResponse
 import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST.JValue
@@ -77,7 +78,10 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       search in s"${config.index}/$docType" query queryText start page.offset limit page.count
     } map { resp =>
       val lastPage = (page.offset + page.count) >= resp.getHits.totalHits()
-      val hits = resp.getHits.hits().map(hit => parse(hit.getSourceAsString)).toList
+      val hits = resp.getHits.hits().map { hit =>
+        val idField: JValue = "id" -> hit.getId
+        idField merge parse(hit.getSourceAsString)
+      }.toList
       ListPage(hits, lastPage)
     }
 
