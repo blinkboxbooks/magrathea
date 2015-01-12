@@ -105,14 +105,19 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       case None => Future.successful(false)
     }
 
-  private def reIndexTable(table: String)(count: => () => Future[Int],
-                                          index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
-    count().flatMap { totalDocs =>
-      (0 to totalDocs by config.reIndexChunks).foldLeft(Future.successful(())) { (acc, offset) =>
-        acc.flatMap { _ =>
-          index(config.reIndexChunks, offset).flatMap { docs =>
-            indexBulkDocuments(docs, table).map(_ => ())
-          }
+  private def reIndexTable(table: String)
+    (count: => () => Future[Int], index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
+    for {
+      totalDocs <- count()
+      _ <- elasticClient.execute(delete index config.index)
+      _ <- reIndexChunks(totalDocs, table, index)
+    } yield ()
+      
+  private def reIndexChunks(totalDocs: Int, table: String, index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
+    (0 to totalDocs by config.reIndexChunks).foldLeft(Future.successful(())) { (acc, offset) =>
+      acc.flatMap { _ =>
+        index(config.reIndexChunks, offset).flatMap { docs =>
+          indexBulkDocuments(docs, table).map(_ => ())
         }
       }
     }
