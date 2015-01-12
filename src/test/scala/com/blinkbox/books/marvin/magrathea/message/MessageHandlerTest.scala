@@ -4,14 +4,13 @@ import java.util.UUID
 
 import akka.actor.{ActorRef, ActorSystem, Props, Status}
 import akka.testkit.{ImplicitSender, TestActorRef, TestKit}
+import com.blinkbox.books.elasticsearch.client.{BulkResponse, IndexResponse}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.json.Json4sExtensions._
 import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.marvin.magrathea.{SchemaConfig, TestHelper}
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
-import org.elasticsearch.action.bulk.BulkResponse
-import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -207,7 +206,7 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     val indexService = mock[IndexService]
     val bulkResponse = mock[BulkResponse]
     doReturn(Future.successful(bulkResponse)).when(indexService).deleteCurrentIndex(any[List[UUID]])
-    doReturn(Future.successful(new IndexResponse())).when(indexService).indexCurrentDocument(any[UUID], any[JValue])
+    doReturn(Future.successful(new IndexResponse("", "", "", 0L, true))).when(indexService).indexCurrentDocument(any[UUID], any[JValue])
 
     val errorHandler = mock[ErrorHandler]
     doReturn(Future.successful(())).when(errorHandler).handleError(any[Event], any[Throwable])

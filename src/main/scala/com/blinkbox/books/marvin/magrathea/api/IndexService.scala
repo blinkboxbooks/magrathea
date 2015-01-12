@@ -3,19 +3,19 @@ package com.blinkbox.books.marvin.magrathea.api
 import java.util.UUID
 import java.util.concurrent.Executors
 
+import com.blinkbox.books.elasticsearch.client.ElasticClientApi._
+import com.blinkbox.books.elasticsearch.client.{BulkResponse, ElasticClient, Formats, IndexResponse}
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message._
 import com.blinkbox.books.marvin.magrathea.{ElasticConfig, JsonDoc}
 import com.blinkbox.books.spray.Page
 import com.blinkbox.books.spray.v2.ListPage
-import com.sksamuel.elastic4s.ElasticClient
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.source.DocumentSource
 import com.typesafe.scalalogging.StrictLogging
-import org.elasticsearch.action.bulk.BulkResponse
-import org.elasticsearch.action.index.IndexResponse
 import org.json4s.JsonAST.JValue
+import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import spray.httpx.Json4sJacksonSupport
 
@@ -42,7 +42,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   }
 
   implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-  override implicit val json4sJacksonFormats = DefaultFormats
+  override implicit val json4sJacksonFormats = DefaultFormats ++ Formats.all
 
   override def searchInCurrent(queryText: String, page: Page): Future[ListPage[JValue]] =
     searchDocument(queryText, "current", page)
@@ -76,8 +76,11 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     elasticClient.execute {
       search in s"${config.index}/$docType" query queryText start page.offset limit page.count
     } map { resp =>
-      val lastPage = (page.offset + page.count) >= resp.getHits.totalHits()
-      val hits = resp.getHits.hits().map(hit => parse(hit.getSourceAsString)).toList
+      val lastPage = (page.offset + page.count) >= resp.hits.total
+      val hits = resp.hits.hits.map { hit =>
+        val idField: JValue = "id" -> hit._id
+        idField merge hit._source
+      }.toList
       ListPage(hits, lastPage)
     }
 

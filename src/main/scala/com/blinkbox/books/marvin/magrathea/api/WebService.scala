@@ -11,9 +11,9 @@ class WebService(config: AppConfig, documentDao: DocumentDao, indexService: Inde
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   val restApi = new RestApi(config.api, config.schemas, documentDao, indexService)
   val healthService = new HealthCheckHttpService {
-    override implicit def actorRefFactory = WebService.this.actorRefFactory
+    override implicit val actorRefFactory = WebService.this.actorRefFactory
     override val basePath = Path./
   }
 
-  def receive = runRoute(restApi.routes ~ healthService.routes)
+  def receive = runRoute(healthService.routes ~ restApi.routes)
 }
