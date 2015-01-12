@@ -16,5 +16,5 @@ In order to ascertain if the service is alive for loadbalancing/monitoring
     And I get a valid report health response returned 
 
   Scenario: Threads endpoint
-    When I request the thread health endpoint
-    Then the request fails because the endpoint is not implemented
+    When I request the threads health endpoint
+    Then the request is successful

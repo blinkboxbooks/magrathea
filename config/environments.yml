@@ -7,3 +7,4 @@ local:
 dev_int:
   servers:
     api: https://api.dev.bbbtest2.com/
+    health: http://kinney.blinkbox.local:7017/health
