@@ -1,8 +1,8 @@
 # This file details the various servers in each environment which tests for this service require.
 local:
   servers:
-    api: http://localhost:7008/
-    health: http://localhost:7008/health
+    api: http://kinney.blinkbox.local:7017/
+    health: http://kinney.blinkbox.local:7017/health
 
 dev_int:
   servers:

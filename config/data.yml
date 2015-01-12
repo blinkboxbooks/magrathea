@@ -1,14 +1,14 @@
 book:
   existing: 
     isbn: 9780111222333
-    id: "16df6d65-8b87-46b2-9fe5-27e7934c77e1"
+    id: "bb97f7fb-7e46-4b99-93bb-47dd5c86c6bb"
     title: "Two Heads are Better Than One"
   invalid:
     id: "Totallynotaguid"
 
 contributor:
   existing:
-    id: "682b83a8-01a8-4e5a-bbf3-6c4f303a0058"
+    id: "4f234bca-4d28-41f8-b17b-6b61a0a5daa2"
     names:
       display: "Zaphod Beeblebrox"
   invalid:
