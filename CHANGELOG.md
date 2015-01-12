@@ -1,5 +1,20 @@
 # Change log
 
+## 0.5.4 ([#15](https://git.mobcastdev.com/Marvin/magrathea/pull/15) 2015-01-12 13:16:51)
+
+ElasticHttp & Health Checks
+
+### Improvements
+
+- Switched to elastic-http
+- Including the `id` of each search result
+- Bumped libraries
+
+### Bug fixes
+
+- Fixed health endpoints
+
+
 ## 0.5.3 ([#14](https://git.mobcastdev.com/Marvin/magrathea/pull/14) 2015-01-07 15:26:58)
 
 New name for magrathea
