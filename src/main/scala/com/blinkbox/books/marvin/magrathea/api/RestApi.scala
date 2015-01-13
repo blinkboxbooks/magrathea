@@ -7,8 +7,9 @@ import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, DocumentRevisions}
 import com.blinkbox.books.marvin.magrathea.{JsonDoc, SchemaConfig}
-import com.blinkbox.books.spray.v1.Error
+import com.blinkbox.books.spray.v2.Error
 import com.blinkbox.books.spray.v2.Implicits.throwableMarshaller
+import com.blinkbox.books.spray.v2.RejectionHandler.ErrorRejectionHandler
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
 import com.typesafe.scalalogging.StrictLogging
 import spray.http.AllOrigins
@@ -38,9 +39,9 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
   implicit val ec = DiagnosticExecutionContext(actorRefFactory.dispatcher)
   implicit val timeout = config.timeout
 
-  private val bookError = uncacheable(NotFound, Error("NotFound", "The requested book was not found."))
-  private val contributorError = uncacheable(NotFound, Error("NotFound", "The requested contributor was not found."))
-  private val uuidError = uncacheable(BadRequest, Error("InvalidUUID", "The requested id is not a valid UUID."))
+  private val bookError = uncacheable(NotFound, Error("NotFound", Some("The requested book was not found.")))
+  private val contributorError = uncacheable(NotFound, Error("NotFound", Some("The requested contributor was not found.")))
+  private val uuidError = uncacheable(BadRequest, Error("InvalidUUID", Some("The requested id is not a valid UUID.")))
 
   override val getCurrentBookById = get {
     path("books" / Segment) { id =>
@@ -145,8 +146,10 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
         `Access-Control-Allow-Origin`(AllOrigins)
       ) {
         handleExceptions(exceptionHandler) {
-          getCurrentBookById ~ getCurrentBookHistory ~ getCurrentContributorById ~ getCurrentContributorHistory ~
-          search ~ reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
+          handleRejections(ErrorRejectionHandler) {
+            getCurrentBookById ~ getCurrentBookHistory ~ getCurrentContributorById ~ getCurrentContributorHistory ~
+            search ~ reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
+          }
         }
       }
     }
