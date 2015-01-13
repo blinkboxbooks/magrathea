@@ -14,6 +14,8 @@ import org.mockito.Matchers._
 import org.mockito.Mockito._
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.{FlatSpecLike, Matchers}
+import spray.http.AllOrigins
+import spray.http.HttpHeaders.`Access-Control-Allow-Origin`
 import spray.http.StatusCodes._
 import spray.routing.HttpService
 import spray.testkit.ScalatestRouteTest
@@ -188,6 +190,12 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
     when(indexService.reIndexCurrentDocument(any[UUID], any[String])).thenReturn(Future.successful(false))
     Put(s"/contributors/$generateId/reindex") ~> routes ~> check {
       status shouldEqual NotFound
+    }
+  }
+
+  it should "include CORS headers" in {
+    Get("/books/xxx") ~> routes ~> check {
+      header("Access-Control-Allow-Origin") shouldEqual Some(`Access-Control-Allow-Origin`(AllOrigins))
     }
   }
 }
