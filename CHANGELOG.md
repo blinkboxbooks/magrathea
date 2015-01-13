@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.7 ([#18](https://git.mobcastdev.com/Marvin/magrathea/pull/18) 2015-01-13 11:23:38)
+
+CORS Header
+
+### Improvement
+
+- Added `Access-Control-Allow-Origin: *` header for every API response
+
 ## 0.5.6 ([#17](https://git.mobcastdev.com/Marvin/magrathea/pull/17) 2015-01-12 14:46:52)
 
 Correct the threads health check test
