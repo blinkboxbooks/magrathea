@@ -6,6 +6,7 @@ import java.util.UUID
 import com.blinkbox.books.config.ApiConfig
 import com.blinkbox.books.marvin.magrathea.message.{DocumentDao, Revision}
 import com.blinkbox.books.marvin.magrathea.{History, SchemaConfig, TestHelper}
+import com.blinkbox.books.spray.v2.Error
 import com.blinkbox.books.test.MockitoSyrup
 import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
@@ -196,6 +197,13 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
   it should "include CORS headers" in {
     Get("/books/xxx") ~> routes ~> check {
       header("Access-Control-Allow-Origin") shouldEqual Some(`Access-Control-Allow-Origin`(AllOrigins))
+    }
+  }
+
+  it should "throw a json exception for a bad request" in {
+    Get("/search?q=foo&count=string") ~> routes ~> check {
+      status shouldEqual BadRequest
+      responseAs[Error].code shouldEqual "BadRequest"
     }
   }
 }
