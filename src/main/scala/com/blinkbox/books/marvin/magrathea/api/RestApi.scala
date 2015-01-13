@@ -11,7 +11,8 @@ import com.blinkbox.books.spray.v1.Error
 import com.blinkbox.books.spray.v2.Implicits.throwableMarshaller
 import com.blinkbox.books.spray.{Directives => CommonDirectives, _}
 import com.typesafe.scalalogging.StrictLogging
-import spray.http.HttpHeaders.RawHeader
+import spray.http.AllOrigins
+import spray.http.HttpHeaders.{RawHeader, `Access-Control-Allow-Origin`}
 import spray.http.StatusCodes._
 import spray.routing._
 import spray.util.LoggingContext
@@ -139,7 +140,10 @@ class RestApi(config: ApiConfig, schemas: SchemaConfig, documentDao: DocumentDao
 
   val routes = rootPath(config.localUrl.path) {
     monitor(logger, throwableMarshaller) {
-      respondWithHeader(RawHeader("Vary", "Accept, Accept-Encoding")) {
+      respondWithHeaders(
+        RawHeader("Vary", "Accept, Accept-Encoding"),
+        `Access-Control-Allow-Origin`(AllOrigins)
+      ) {
         handleExceptions(exceptionHandler) {
           getCurrentBookById ~ getCurrentBookHistory ~ getCurrentContributorById ~ getCurrentContributorHistory ~
           search ~ reIndexBook ~ reIndexContributor ~ reIndexCurrentSearch ~ reIndexHistorySearch
