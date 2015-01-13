@@ -1,5 +1,14 @@
 # Change log
 
+## 0.5.8 ([#19](https://git.mobcastdev.com/Marvin/magrathea/pull/19) 2015-01-13 14:16:22)
+
+Using rejection handler to return json errors
+
+### Improvements
+
+- Added rejections handler to jsonify all the common exceptions
+- Switched to v2 Error for consistency
+
 ## 0.5.7 ([#18](https://git.mobcastdev.com/Marvin/magrathea/pull/18) 2015-01-13 11:23:38)
 
 CORS Header
