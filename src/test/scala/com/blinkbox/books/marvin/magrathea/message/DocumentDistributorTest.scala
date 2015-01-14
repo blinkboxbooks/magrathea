@@ -9,6 +9,7 @@ import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor._
 import com.blinkbox.books.marvin.magrathea.{SchemaConfig, TestHelper}
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
+import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST.{JNothing, JValue}
 import org.json4s.JsonDSL._
 import org.junit.runner.RunWith
@@ -147,6 +148,11 @@ class DocumentDistributorTest extends TestKit(ActorSystem("test-system")) with F
       res.isInstanceOf[IllegalArgumentException] shouldEqual true
       res.getMessage shouldEqual "Cannot send distribution information: document schema is missing."
     }
+  }
+
+  it should "generate a valid sequence number" in new TestFixture {
+    val timestamp = (distributor.seqNum \ "sequenceNumber").extract[Long]
+    timestamp should be <= DateTime.now(DateTimeZone.UTC).getMillis
   }
 
   trait TestFixture extends TestHelper {

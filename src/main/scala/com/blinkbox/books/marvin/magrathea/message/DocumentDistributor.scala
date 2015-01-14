@@ -12,6 +12,7 @@ import com.blinkbox.books.marvin.magrathea.message.DocumentDistributor.Status
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.spray.v2
 import com.typesafe.scalalogging.StrictLogging
+import org.joda.time.{DateTime, DateTimeZone}
 import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
@@ -65,6 +66,8 @@ class DocumentDistributor(publisher: ActorRef, schemas: SchemaConfig)
         Status(usable = reasons.isEmpty, reasons)
       case _ => Status(usable = true, Set.empty)
     }
+
+  def seqNum: JValue = "sequenceNumber" -> DateTime.now(DateTimeZone.UTC).getMillis
 }
 
 object DocumentStatus extends v2.JsonSupport {
