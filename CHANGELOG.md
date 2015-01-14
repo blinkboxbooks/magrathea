@@ -1,5 +1,13 @@
 # Change log
 
+## 0.5.9 ([#20](https://git.mobcastdev.com/Marvin/magrathea/pull/20) 2015-01-14 17:43:32)
+
+Sequence Number
+
+### Improvements
+
+- Added `sequenceNumber` in the distribution message, which is essentially a timestamp
+
 ## 0.5.8 ([#19](https://git.mobcastdev.com/Marvin/magrathea/pull/19) 2015-01-13 14:16:22)
 
 Using rejection handler to return json errors
