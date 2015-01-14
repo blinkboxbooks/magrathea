@@ -11,7 +11,8 @@ import com.blinkbox.books.marvin.magrathea.api.IndexService
 import com.blinkbox.books.marvin.magrathea.{SchemaConfig, TestHelper}
 import com.blinkbox.books.messaging._
 import com.blinkbox.books.test.MockitoSyrup
-import org.json4s.JsonAST.{JArray, JNothing, JString, JValue}
+import org.joda.time.{DateTime, DateTimeZone}
+import org.json4s.JsonAST._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
 import org.junit.runner.RunWith
@@ -185,6 +186,25 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
     verify(documentDao, times(2)).storeCurrentDocument(any[JValue], eql(false))
   }
 
+  it should "send distribution information" in new TestFixture {
+    handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val documentCaptor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(distributor, times(1)).sendDistributionInformation(documentCaptor.capture())
+    documentCaptor.getValue \ "distributionStatus" should not be JNothing
+    documentCaptor.getValue \ "distributionStatus" \ "usable" shouldEqual JBool(true)
+  }
+
+  it should "include sequence number in distribution information" in new TestFixture {
+    handler ! bookEvent(sampleBook())
+    checkNoFailures()
+    expectMsgType[Status.Success]
+    val documentCaptor = ArgumentCaptor.forClass(classOf[JValue])
+    verify(distributor, times(1)).sendDistributionInformation(documentCaptor.capture())
+    documentCaptor.getValue \ "sequenceNumber" shouldBe a [JInt]
+  }
+
   trait TestFixture extends TestHelper {
     val config = mock[SchemaConfig]
     doReturn("ingestion.book.metadata.v2").when(config).book
@@ -201,6 +221,8 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
     val distributor = mock[DocumentDistributor]
     doReturn(Future.successful(())).when(distributor).sendDistributionInformation(any[JValue])
+    val seqNum: JValue = "sequenceNumber" -> DateTime.now(DateTimeZone.UTC).getMillis
+    doReturn(seqNum).when(distributor).seqNum
     doReturn(DocumentDistributor.Status(usable = true, Set.empty)).when(distributor).status(any[JValue])
 
     val indexService = mock[IndexService]
