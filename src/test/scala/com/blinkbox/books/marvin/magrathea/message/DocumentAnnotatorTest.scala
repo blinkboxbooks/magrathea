@@ -13,7 +13,9 @@ import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
 class DocumentAnnotatorTest extends FlatSpecLike with Matchers with TestHelper {
-  "The document annotator" should "refuse to annotate a document without source" in {
+  behavior of "The document annotator"
+
+  it should "refuse to annotate a document without source" in {
     val doc = sampleBook().removeDirectField("source")
     intercept[MissingSourceException] {
       DocumentAnnotator.annotate(doc)

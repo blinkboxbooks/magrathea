@@ -39,7 +39,9 @@ class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with Implic
 
   private def testMerge(docA: JValue, docB: JValue): JValue = docA merge docB
 
-  "A message handler" should "handle a book message" in new TestFixture {
+  behavior of "The message handler"
+
+  it should "handle a book message" in new TestFixture {
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]

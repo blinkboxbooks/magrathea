@@ -57,9 +57,9 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
   override def indexHistoryDocument(docId: UUID, doc: JValue): Future[IndexResponse] =
     indexDocument(docId, doc, "history")
 
-  override def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "history")
+  override def deleteHistoryIndex(docIds: List[UUID]): Future[BulkResponse] = deleteFromIndex(docIds, "history")
 
-  override def deleteCurrentIndex(docIds: List[UUID]): Future[BulkResponse] = deleteIndex(docIds, "current")
+  override def deleteCurrentIndex(docIds: List[UUID]): Future[BulkResponse] = deleteFromIndex(docIds, "current")
 
   override def reIndexCurrentDocument(docId: UUID, schema: String): Future[Boolean] =
     reIndexDocument(docId, "current", schema)(documentDao.getCurrentDocumentById)
@@ -83,6 +83,8 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
         idField merge hit._source
       }.toList
       ListPage(hits, lastPage)
+    } recover {
+      case UnsuccessfulResponse(StatusCodes.NotFound, _) => ListPage(List.empty, lastPage = true)
     }
 
   private def indexDocument(docId: UUID, doc: JValue, docType: String): Future[IndexResponse] =
@@ -90,13 +92,20 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
       index into s"${config.index}/$docType" doc Json4sSource(DocumentAnnotator.deAnnotate(doc)) id docId
     }
 
-  private def deleteIndex(docIds: List[UUID], docType: String): Future[BulkResponse] =
+  private def deleteFromIndex(docIds: List[UUID], docType: String): Future[BulkResponse] =
     elasticClient.execute {
       bulk(
         docIds.map { docId =>
           delete id docId from s"${config.index}/$docType"
         }: _*
       )
+    }
+
+  private def deleteEntireIndex(): Future[AcknowledgedResponse] =
+    elasticClient.execute {
+      delete index config.index
+    } recover {
+      case UnsuccessfulResponse(StatusCodes.NotFound, _) => AcknowledgedResponse(acknowledged = false)
     }
 
   private def reIndexDocument(docId: UUID, docType: String, schema: String)
@@ -110,7 +119,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     (count: => () => Future[Int], index: => (Int, Int) => Future[List[JsonDoc]]): Future[Unit] =
     for {
       totalDocs <- count()
-      _ <- elasticClient.execute(delete index config.index)
+      _ <- deleteEntireIndex()
       _ <- reIndexChunks(totalDocs, table, index)
     } yield ()
       

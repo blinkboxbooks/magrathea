@@ -15,7 +15,9 @@ import scala.language.{implicitConversions, postfixOps}
 
 @RunWith(classOf[JUnitRunner])
 class DocumentMergerTest extends FlatSpecLike with Matchers with TestHelper {
-  "The document merger" should "refuse to combine two book documents with different schema" in {
+  behavior of "The document merger"
+
+  it should "refuse to combine two book documents with different schema" in {
     val bookA = sampleBook(
       ("$schema" -> "ingestion.book.metadata.v2") ~
       ("field" -> "Field") ~
