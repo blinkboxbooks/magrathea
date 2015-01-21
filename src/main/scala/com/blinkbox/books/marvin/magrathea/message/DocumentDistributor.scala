@@ -1,7 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import java.nio.charset.Charset
-import java.util.concurrent.Executors
+import java.util.concurrent.ForkJoinPool
 
 import akka.actor.ActorRef
 import com.blinkbox.books.json.DefaultFormats
@@ -34,8 +34,8 @@ class DocumentDistributor(publisher: ActorRef, schemas: SchemaConfig)
   extends Json4sJacksonSupport with JsonMethods with StrictLogging {
   import com.blinkbox.books.marvin.magrathea.message.DocumentStatus._
 
-  implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
-  implicit val json4sJacksonFormats = DefaultFormats
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(new ForkJoinPool()))
+  override implicit val json4sJacksonFormats = DefaultFormats
   private val checkers: Set[Checker] = Set(TitleChecker, AvailabilityChecker, SuppliableChecker,
     SellableChecker, PublisherChecker, CoverChecker, EpubChecker, EnglishChecker,
     DescriptionChecker, UsablePriceChecker, RacyTitleChecker)

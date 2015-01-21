@@ -26,8 +26,8 @@ class MessageHandler(schemas: SchemaConfig, documentDao: DocumentDao, distributo
   (documentMerge: => (JValue, JValue) => JValue) extends ReliableEventHandler(errorHandler, retryInterval)
   with StrictLogging with Json4sJacksonSupport with JsonMethods {
 
-  implicit val timeout = Timeout(retryInterval)
-  implicit val json4sJacksonFormats = DefaultFormats
+  private implicit val timeout = Timeout(retryInterval)
+  override implicit val json4sJacksonFormats = DefaultFormats
 
   override protected def handleEvent(event: Event, originalSender: ActorRef): Future[Unit] = timeTaken(for {
     incomingDoc <- parseDocument(event.body.asString())

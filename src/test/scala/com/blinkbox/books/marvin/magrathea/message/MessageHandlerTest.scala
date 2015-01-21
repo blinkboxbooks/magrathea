@@ -32,8 +32,8 @@ import scala.language.implicitConversions
 class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with ImplicitSender with FlatSpecLike
   with BeforeAndAfterAll with MockitoSyrup with Matchers with Json4sJacksonSupport with JsonMethods {
 
-  implicit val json4sJacksonFormats = DefaultFormats
-  val retryInterval = 100.millis
+  override implicit val json4sJacksonFormats = DefaultFormats
+  private val retryInterval = 100.millis
 
   override protected def afterAll(): Unit = system.shutdown()
 

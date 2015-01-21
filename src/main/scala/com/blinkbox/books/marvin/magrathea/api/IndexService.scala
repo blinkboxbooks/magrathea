@@ -1,10 +1,10 @@
 package com.blinkbox.books.marvin.magrathea.api
 
 import java.util.UUID
-import java.util.concurrent.Executors
+import java.util.concurrent.ForkJoinPool
 
 import com.blinkbox.books.elasticsearch.client.ElasticClientApi._
-import com.blinkbox.books.elasticsearch.client.{BulkResponse, ElasticClient, Formats, IndexResponse}
+import com.blinkbox.books.elasticsearch.client._
 import com.blinkbox.books.json.DefaultFormats
 import com.blinkbox.books.logging.DiagnosticExecutionContext
 import com.blinkbox.books.marvin.magrathea.message._
@@ -17,6 +17,7 @@ import com.typesafe.scalalogging.StrictLogging
 import org.json4s.JsonAST.JValue
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods
+import spray.http.StatusCodes
 import spray.httpx.Json4sJacksonSupport
 
 import scala.concurrent.{ExecutionContext, Future}
@@ -41,7 +42,7 @@ class DefaultIndexService(elasticClient: ElasticClient, config: ElasticConfig, d
     val json = compact(render(root))
   }
 
-  implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(new ForkJoinPool()))
   override implicit val json4sJacksonFormats = DefaultFormats ++ Formats.all
 
   override def searchInCurrent(queryText: String, page: Page): Future[ListPage[JValue]] =

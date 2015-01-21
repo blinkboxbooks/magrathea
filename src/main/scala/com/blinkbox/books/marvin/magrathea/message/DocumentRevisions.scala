@@ -16,7 +16,7 @@ case class Revision(id: UUID, editor: String, changed: JValue, added: JValue, de
 object DocumentRevisions extends (List[History] => List[Revision]) {
   private case class PackedRevision(doc: JsonDoc, rev: Revision)
 
-  implicit val json4sJacksonFormats = DefaultFormats
+  private implicit val json4sJacksonFormats = DefaultFormats
 
   /**
    * Compiles a revision list (diffs) from a list of history documents.
