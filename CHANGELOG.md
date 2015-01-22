@@ -1,5 +1,17 @@
 # Change log
 
+## 0.5.10 ([#21](https://git.mobcastdev.com/Marvin/magrathea/pull/21) 2015-01-22 11:57:40)
+
+Recover from missing index
+
+### Bug fixes
+
+- Fixed an issue when searching and re-indexing when the index is absent
+
+### Improvements
+
+- Switched from cached thread pool to fork join thread pool
+
 ## 0.5.9 ([#20](https://git.mobcastdev.com/Marvin/magrathea/pull/20) 2015-01-14 17:43:32)
 
 Sequence Number
