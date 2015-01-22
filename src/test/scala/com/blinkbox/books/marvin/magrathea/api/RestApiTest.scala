@@ -42,7 +42,9 @@ class RestApiTest extends FlatSpecLike with ScalatestRouteTest with HttpService
   val documentDao = mock[DocumentDao]
   val routes = new RestApi(config, schemas, documentDao, indexService).routes
 
-  "The service" should "return 200 with the requested book, if it exists" in {
+  behavior of "The API"
+
+  it should "return 200 with the requested book, if it exists" in {
     val book = sampleBook()
     when(documentDao.getCurrentDocumentById(any[UUID], any[Option[String]])).thenReturn(
       Future.successful(Some(current(book))))

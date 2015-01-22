@@ -66,7 +66,7 @@ object DocumentMerger extends StrictLogging {
   case class DifferentClassificationException(dA: JValue, dB: JValue) extends RuntimeException(
     s"Cannot merge documents with different classifications:\n- ${compact(render(dA))}\n- ${compact(render(dB))}")
   
-  implicit val json4sJacksonFormats = DefaultFormats
+  private implicit val json4sJacksonFormats = DefaultFormats
   private val AuthorityRoles = Seq("publisher_ftp", "content_manager")
 
   def merge(docA: JValue, docB: JValue): JValue = {

@@ -32,14 +32,16 @@ import scala.language.implicitConversions
 class MessageHandlerTest extends TestKit(ActorSystem("test-system")) with ImplicitSender with FlatSpecLike
   with BeforeAndAfterAll with MockitoSyrup with Matchers with Json4sJacksonSupport with JsonMethods {
 
-  implicit val json4sJacksonFormats = DefaultFormats
-  val retryInterval = 100.millis
+  override implicit val json4sJacksonFormats = DefaultFormats
+  private val retryInterval = 100.millis
 
   override protected def afterAll(): Unit = system.shutdown()
 
   private def testMerge(docA: JValue, docB: JValue): JValue = docA merge docB
 
-  "A message handler" should "handle a book message" in new TestFixture {
+  behavior of "The message handler"
+
+  it should "handle a book message" in new TestFixture {
     handler ! bookEvent(sampleBook())
     checkNoFailures()
     expectMsgType[Status.Success]

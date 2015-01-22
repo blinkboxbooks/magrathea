@@ -1,7 +1,7 @@
 package com.blinkbox.books.marvin.magrathea.message
 
 import java.util.UUID
-import java.util.concurrent.Executors
+import java.util.concurrent.ForkJoinPool
 
 import com.blinkbox.books.config.DatabaseConfig
 import com.blinkbox.books.json.DefaultFormats
@@ -18,7 +18,7 @@ import spray.httpx.Json4sJacksonSupport
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.reflectiveCalls
 import scala.slick.driver.PostgresDriver
-import scala.slick.jdbc.{GetResult, SetParameter, StaticQueryInvoker, StaticQuery => Q}
+import scala.slick.jdbc.{GetResult, SetParameter, StaticQuery => Q, StaticQueryInvoker}
 
 trait DocumentDao {
   def getHistoryDocumentById(id: UUID, schema: Option[String] = None): Future[Option[History]]
@@ -44,7 +44,7 @@ class PostgresDocumentDao(config: DatabaseConfig, schemas: SchemaConfig) extends
   with Json4sJacksonSupport with JsonMethods with StrictLogging {
   import com.blinkbox.books.marvin.magrathea.message.MyPostgresDriver.simple._
 
-  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(Executors.newCachedThreadPool))
+  private implicit val ec = DiagnosticExecutionContext(ExecutionContext.fromExecutor(new ForkJoinPool()))
   override implicit val json4sJacksonFormats = DefaultFormats
 
   class HistoryTable(tag: Tag) extends Table[History](tag, "history_documents") {
