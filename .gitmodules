@@ -1,9 +1,0 @@
-[submodule "rpm"]
-	path = rpm
-	url = git@git.mobcastdev.com:ITOPS/specs.fatjar.git
-[submodule "gpg"]
-	path = gpg
-	url = git@git.mobcastdev.com:ITOPS/gpg.books.teamcity.dev.git
-[submodule "schemas"]
-	path = schemas
-	url = git@git.mobcastdev.com:Hermes/schemas.git
